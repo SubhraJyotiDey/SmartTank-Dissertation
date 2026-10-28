@@ -29,9 +29,10 @@ private:
     unsigned long lastRooftopFetch = 0;
     int samplesCaptured = 0;
 
-    // Rooftop Node 2 Cache
-    float cachedRooftopDist = 60.0f;
-    float cachedRooftopLevel = 50.0f;
+    // Rooftop Node 2 Cache (-1.0f indicates offline / disconnected)
+    float cachedRooftopDist = -1.0f;
+    float cachedRooftopLevel = -1.0f;
+    bool rooftopOnline = false;
     const char* rooftopApiUrl = "http://192.168.29.130/api/reading";
 
     // Buffer File
@@ -68,9 +69,22 @@ private:
                             float l = payload.substring(lvlIdx + 12).toFloat();
                             if (l >= 0.0f && l <= 100.0f) self->cachedRooftopLevel = l;
                         }
+                        self->rooftopOnline = true;
+                    } else {
+                        self->cachedRooftopDist = -1.0f;
+                        self->cachedRooftopLevel = -1.0f;
+                        self->rooftopOnline = false;
                     }
                     http.end();
+                } else {
+                    self->cachedRooftopDist = -1.0f;
+                    self->cachedRooftopLevel = -1.0f;
+                    self->rooftopOnline = false;
                 }
+            } else {
+                self->cachedRooftopDist = -1.0f;
+                self->cachedRooftopLevel = -1.0f;
+                self->rooftopOnline = false;
             }
             vTaskDelay(pdMS_TO_TICKS(1000));
         }

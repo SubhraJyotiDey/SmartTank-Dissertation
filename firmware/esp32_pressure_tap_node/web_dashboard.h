@@ -1098,7 +1098,13 @@ const char DASHBOARD_HTML[] PROGMEM = R"rawliteral(
           recDot.style.animation = 'pulseAlert 1s infinite';
           elapsedEl.innerText = d.elapsed_sec.toFixed(1) + 's / ' + d.duration_sec.toFixed(0) + 's';
           samplesEl.innerText = d.samples + ' @ 10Hz';
-          rooftopEl.innerText = d.rooftop_dist.toFixed(1) + ' cm (' + d.rooftop_level.toFixed(1) + '%)';
+          if (d.rooftop_dist && d.rooftop_dist > 0) {
+            rooftopEl.innerText = d.rooftop_dist.toFixed(1) + ' cm (' + d.rooftop_level.toFixed(1) + '%)';
+            rooftopEl.style.color = '#34d399';
+          } else {
+            rooftopEl.innerText = 'OFFLINE (-- cm)';
+            rooftopEl.style.color = '#94a3b8';
+          }
           progContainer.style.display = 'none';
           btnStart.style.display = 'none';
           btnStop.style.display = 'inline-flex';
@@ -1124,8 +1130,12 @@ const char DASHBOARD_HTML[] PROGMEM = R"rawliteral(
           progContainer.style.display = 'none';
           btnStart.style.display = 'inline-flex';
           btnStop.style.display = 'none';
-          if (d.rooftop_dist > 0) {
+          if (d.rooftop_dist && d.rooftop_dist > 0) {
             rooftopEl.innerText = d.rooftop_dist.toFixed(1) + ' cm (' + d.rooftop_level.toFixed(1) + '%)';
+            rooftopEl.style.color = '#34d399';
+          } else {
+            rooftopEl.innerText = 'OFFLINE (-- cm)';
+            rooftopEl.style.color = '#94a3b8';
           }
         }
       } catch(e) {}

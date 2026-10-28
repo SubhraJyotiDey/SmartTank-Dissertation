@@ -500,8 +500,8 @@ function handleHighResEventUpload(params, jsonBody) {
         r.p !== undefined ? parseFloat(r.p).toFixed(2) : "",
         r.d !== undefined ? parseFloat(r.d).toFixed(2) : (r.dp !== undefined ? parseFloat(r.dp).toFixed(2) : ""),
         r.st || "STATIC",
-        r.ud !== undefined ? parseFloat(r.ud).toFixed(1) : (r.u_dist !== undefined ? parseFloat(r.u_dist).toFixed(1) : ""),
-        r.ul !== undefined ? parseFloat(r.ul).toFixed(1) : (r.u_lvl !== undefined ? parseFloat(r.u_lvl).toFixed(1) : ""),
+        (r.ud !== undefined && parseFloat(r.ud) >= 0) ? parseFloat(r.ud).toFixed(1) : ((r.u_dist !== undefined && parseFloat(r.u_dist) >= 0) ? parseFloat(r.u_dist).toFixed(1) : "--"),
+        (r.ul !== undefined && parseFloat(r.ul) >= 0) ? parseFloat(r.ul).toFixed(1) : ((r.u_lvl !== undefined && parseFloat(r.u_lvl) >= 0) ? parseFloat(r.u_lvl).toFixed(1) : "--"),
         r.pl !== undefined ? parseFloat(r.pl).toFixed(1) : (r.p_lvl !== undefined ? parseFloat(r.p_lvl).toFixed(1) : ""),
         r.fl !== undefined ? parseFloat(r.fl).toFixed(3) : "",
         r.vl !== undefined ? parseFloat(r.vl).toFixed(3) : ""
