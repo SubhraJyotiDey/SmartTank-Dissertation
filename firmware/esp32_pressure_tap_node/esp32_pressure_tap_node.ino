@@ -84,6 +84,7 @@ float waterLevelPct    = 0.0f;
 float frozenLevelPct   = 0.0f;
 float waterVolumeL     = 0.0f;
 float waterHeadM       = 0.0f;
+float flowRateLps      = 0.0f; // Instantaneous tap discharge flow rate (L/s)
 
 TapFlowState tapState  = STATE_STATIC;
 unsigned long stateChangeTime = 0;
@@ -427,7 +428,7 @@ void updateFlowStateMachine() {
       // Real flow integration: Approximate dynamic discharge flow rate (Q ~= 8 - 14 L/min)
       // to realistically deduct water if tap runs for prolonged periods:
       float dynamicHeadLoss = fmaxf(0.0f, baselineAtDischarge - filteredPressure);
-      float flowRateLps = 0.045f * sqrtf(fmaxf(0.0f, dynamicHeadLoss)); // ~8-12 L/min
+      flowRateLps = 0.045f * sqrtf(fmaxf(0.0f, dynamicHeadLoss)); // ~8-12 L/min
       totalDischargedLiters += flowRateLps * 0.10f; // Integrated every 100 ms
 
       // Recovery Trigger:
@@ -438,6 +439,7 @@ void updateFlowStateMachine() {
 
       if (closureSurge || backToBaseline) {
         tapState = STATE_SETTLING;
+        flowRateLps = 0.0f;
         stateChangeTime = now;
         peakHammerPressure = currentPressure; // Begin tracking Joukowsky peak
         Serial.printf("[FLOW-ENG] Valve Closure Shock Detected! (dP/dt=%.2f kPa/s). Entering Joukowsky Damping.\n", dPdt);
@@ -446,6 +448,7 @@ void updateFlowStateMachine() {
     }
 
     case STATE_SETTLING: {
+      flowRateLps = 0.0f;
       // Continuously record the highest overpressure shockwave peak
       if (currentPressure > peakHammerPressure) {
         peakHammerPressure = currentPressure;
@@ -1063,7 +1066,7 @@ void handleManualLogApi() {
 
 void handleOtaCheckApi() {
   Serial.println(F("[WEB] Manual Cloud OTA check triggered via Web Dashboard"));
-  bool updated = cloudOTA.checkAndUpdate(true);
+  cloudOTA.checkAndUpdate(true);
   String json = "{\"status\":\"success\",\"message\":\"" + cloudOTA.getStatus() + "\"}";
   server.send(200, "application/json", json);
 }
