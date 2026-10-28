@@ -1,0 +1,49 @@
+name: Build ESP32 Firmware & Automatic OTA Artifacts
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'firmware/**'
+      - '.github/workflows/build-firmware.yml'
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build Node Binaries
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install PlatformIO Core
+        run: |
+          python -m pip install --upgrade pip
+          pip install platformio
+
+      - name: Build Pressure Tap Node Firmware
+        run: |
+          cd firmware/esp32_pressure_tap_node
+          pio run
+          cp .pio/build/esp32dev/firmware.bin ../../pressure_node_firmware.bin
+
+      - name: Build Ultrasonic Tank Node Firmware
+        run: |
+          cd firmware/esp32_ultrasonic_tank_node
+          pio run
+          cp .pio/build/esp32dev/firmware.bin ../../ultrasonic_node_firmware.bin
+
+      - name: Upload Firmware Binaries as Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: esp32-firmware-binaries
+          path: |
+            pressure_node_firmware.bin
+            ultrasonic_node_firmware.bin
+          retention-days: 14
