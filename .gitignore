@@ -1,0 +1,9 @@
+# Git ignore for ESP32 Smart Tank Dissertation Project
+.pio/
+.vscode/
+build/
+*.bin
+*.elf
+*.csv
+scratch/
+.system_generated/
