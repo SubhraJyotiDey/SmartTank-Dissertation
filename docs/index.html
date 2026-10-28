@@ -1,0 +1,1278 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Smart Tank Cloud Command Center | Global Non-Invasive Hydrostatic Monitor</title>
+  <meta name="description" content="Global Cloud Dashboard and Bidirectional Control Center for the Non-Invasive ESP32 Hydrostatic Water Level Monitoring System.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <!-- Chart.js for real-time hydraulic dynamics -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <!-- MQTT.js over Secure WebSockets (WSS) -->
+  <script src="https://unpkg.com/mqtt@5.3.5/dist/mqtt.min.js"></script>
+  <style>
+    :root {
+      --bg-dark: #070b14;
+      --card-bg: rgba(15, 23, 42, 0.75);
+      --card-border: rgba(255, 255, 255, 0.08);
+      --card-hover: rgba(56, 189, 248, 0.25);
+      --primary: #0ea5e9;
+      --primary-glow: rgba(14, 165, 233, 0.4);
+      --accent-cyan: #06b6d4;
+      --accent-purple: #a855f7;
+      --success: #10b981;
+      --warning: #f59e0b;
+      --danger: #ef4444;
+      --text-main: #f8fafc;
+      --text-muted: #94a3b8;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: 'Outfit', sans-serif;
+    }
+
+    body {
+      background-color: var(--bg-dark);
+      background-image: 
+        radial-gradient(circle at 15% 15%, rgba(14, 165, 233, 0.12) 0%, transparent 45%),
+        radial-gradient(circle at 85% 85%, rgba(168, 85, 247, 0.08) 0%, transparent 45%),
+        radial-gradient(circle at 50% 50%, rgba(6, 182, 212, 0.05) 0%, transparent 60%);
+      color: var(--text-main);
+      min-height: 100vh;
+      padding: 1.5rem;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .container {
+      max-width: 1320px;
+      margin: 0 auto;
+      width: 100%;
+      flex: 1;
+    }
+
+    /* Header */
+    header {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      align-items: center;
+      gap: 1.25rem;
+      margin-bottom: 2rem;
+      padding-bottom: 1.25rem;
+      border-bottom: 1px solid var(--card-border);
+    }
+
+    .brand-title {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+    }
+
+    .brand-icon {
+      width: 48px;
+      height: 48px;
+      background: linear-gradient(135deg, #0284c7, #06b6d4);
+      border-radius: 14px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 0 25px var(--primary-glow);
+    }
+
+    .brand-icon svg {
+      width: 26px;
+      height: 26px;
+      fill: #ffffff;
+    }
+
+    h1 {
+      font-size: 1.6rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+
+    .subtitle {
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .top-badges {
+      display: flex;
+      gap: 0.75rem;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.45rem 0.9rem;
+      border-radius: 9999px;
+      font-size: 0.78rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      backdrop-filter: blur(12px);
+      border: 1px solid transparent;
+      transition: all 0.25s ease;
+    }
+
+    .badge-mqtt-online {
+      background: rgba(16, 185, 129, 0.15);
+      border-color: rgba(16, 185, 129, 0.4);
+      color: #34d399;
+      box-shadow: 0 0 15px rgba(16, 185, 129, 0.2);
+    }
+
+    .badge-mqtt-connecting {
+      background: rgba(245, 158, 11, 0.15);
+      border-color: rgba(245, 158, 11, 0.4);
+      color: #fbbf24;
+      animation: pulseAlert 1.5s infinite;
+    }
+
+    .badge-mqtt-offline {
+      background: rgba(239, 68, 68, 0.15);
+      border-color: rgba(239, 68, 68, 0.4);
+      color: #f87171;
+    }
+
+    .badge-static {
+      background: rgba(16, 185, 129, 0.12);
+      border-color: rgba(16, 185, 129, 0.3);
+      color: #34d399;
+    }
+
+    .badge-flowing {
+      background: rgba(245, 158, 11, 0.15);
+      border-color: rgba(245, 158, 11, 0.4);
+      color: #fbbf24;
+      animation: pulseAlert 1.5s infinite;
+    }
+
+    .badge-settling {
+      background: rgba(56, 189, 248, 0.15);
+      border-color: rgba(56, 189, 248, 0.4);
+      color: #38bdf8;
+    }
+
+    @keyframes pulseAlert {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.75; transform: scale(0.98); }
+    }
+
+    .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: currentColor;
+    }
+
+    /* Grid Layout */
+    .grid {
+      display: grid;
+      grid-template-columns: 340px 1fr;
+      gap: 1.5rem;
+      margin-bottom: 1.5rem;
+    }
+
+    @media (max-width: 980px) {
+      .grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 20px;
+      padding: 1.5rem;
+      backdrop-filter: blur(16px);
+      box-shadow: 0 10px 35px rgba(0, 0, 0, 0.5);
+      transition: all 0.25s ease;
+      position: relative;
+    }
+
+    .card:hover {
+      border-color: var(--card-hover);
+    }
+
+    .card-title {
+      font-size: 0.95rem;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 1.25rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    /* Tank Visualization */
+    .tank-container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+    }
+
+    .tank-glass {
+      width: 175px;
+      height: 270px;
+      border: 3px solid rgba(255, 255, 255, 0.2);
+      border-radius: 26px;
+      position: relative;
+      overflow: hidden;
+      background: rgba(15, 23, 42, 0.7);
+      box-shadow: inset 0 0 25px rgba(0, 0, 0, 0.6), 0 0 35px rgba(14, 165, 233, 0.15);
+      margin-bottom: 1rem;
+    }
+
+    .tank-graduations {
+      position: absolute;
+      right: 10px;
+      top: 15px;
+      bottom: 15px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      color: rgba(255, 255, 255, 0.35);
+      font-size: 0.65rem;
+      font-family: 'JetBrains Mono', monospace;
+      z-index: 5;
+      pointer-events: none;
+    }
+
+    .water-fill {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      width: 100%;
+      height: 0%;
+      background: linear-gradient(180deg, rgba(56, 189, 248, 0.88) 0%, rgba(2, 132, 199, 0.98) 100%);
+      transition: height 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+      box-shadow: 0 0 25px rgba(56, 189, 248, 0.4);
+    }
+
+    .water-wave {
+      position: absolute;
+      top: -12px;
+      left: 0;
+      width: 200%;
+      height: 24px;
+      background-image: url('data:image/svg+xml;utf8,<svg viewBox="0 0 800 50" xmlns="http://www.w3.org/2000/svg"><path d="M0,25 C150,50 350,0 500,25 C650,50 850,0 1000,25 L1000,50 L0,50 Z" fill="%2338bdf8" fill-opacity="0.8"/></svg>');
+      background-size: 50% 100%;
+      animation: waveFlow 4s linear infinite;
+    }
+
+    @keyframes waveFlow {
+      0% { transform: translateX(0); }
+      100% { transform: translateX(-50%); }
+    }
+
+    .tank-value-display {
+      text-align: center;
+      margin-top: 0.5rem;
+    }
+
+    .big-pct {
+      font-size: 3.2rem;
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      background: linear-gradient(135deg, #ffffff, #7dd3fc);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      line-height: 1;
+      margin-bottom: 0.35rem;
+    }
+
+    .liters-label {
+      font-size: 1.1rem;
+      color: var(--accent-cyan);
+      font-weight: 600;
+    }
+
+    /* Metric Cards Grid */
+    .metrics-row {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+      gap: 1rem;
+      margin-bottom: 1.25rem;
+    }
+
+    .metric-card {
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid var(--card-border);
+      border-radius: 14px;
+      padding: 1.1rem;
+      position: relative;
+      transition: transform 0.2s ease, border-color 0.2s ease;
+    }
+
+    .metric-card:hover {
+      transform: translateY(-2px);
+      border-color: rgba(255, 255, 255, 0.15);
+    }
+
+    .metric-label {
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-muted);
+      margin-bottom: 0.35rem;
+    }
+
+    .metric-val {
+      font-size: 1.65rem;
+      font-weight: 700;
+      font-family: 'JetBrains Mono', monospace;
+      color: #ffffff;
+    }
+
+    .metric-unit {
+      font-size: 0.85rem;
+      font-weight: 400;
+      color: var(--text-muted);
+      margin-left: 0.2rem;
+    }
+
+    /* Compensation Banner */
+    .comp-banner {
+      background: rgba(245, 158, 11, 0.08);
+      border: 1px solid rgba(245, 158, 11, 0.3);
+      border-radius: 14px;
+      padding: 0.9rem 1.25rem;
+      display: flex;
+      align-items: center;
+      gap: 0.85rem;
+      margin-bottom: 1.5rem;
+      font-size: 0.9rem;
+      color: #fde68a;
+      box-shadow: 0 4px 20px rgba(245, 158, 11, 0.1);
+    }
+
+    /* Chart Container */
+    .chart-container {
+      position: relative;
+      height: 240px;
+      width: 100%;
+    }
+
+    /* Settings & Controls Grid */
+    .settings-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1.5rem;
+      margin-bottom: 1.5rem;
+    }
+
+    @media (max-width: 850px) {
+      .settings-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .btn-group {
+      display: flex;
+      gap: 0.75rem;
+      flex-wrap: wrap;
+      margin-top: 1rem;
+    }
+
+    .btn {
+      padding: 0.65rem 1.2rem;
+      border-radius: 10px;
+      border: none;
+      font-weight: 600;
+      font-size: 0.85rem;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      transition: all 0.2s ease;
+      text-decoration: none;
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, #0284c7, #0ea5e9);
+      color: white;
+      box-shadow: 0 4px 15px var(--primary-glow);
+    }
+
+    .btn-primary:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 20px var(--primary-glow);
+    }
+
+    .btn-secondary {
+      background: rgba(255, 255, 255, 0.06);
+      color: var(--text-main);
+      border: 1px solid var(--card-border);
+    }
+
+    .btn-secondary:hover {
+      background: rgba(255, 255, 255, 0.12);
+      border-color: rgba(255, 255, 255, 0.2);
+    }
+
+    .btn-success {
+      background: linear-gradient(135deg, #059669, #10b981);
+      color: white;
+      box-shadow: 0 4px 15px rgba(16, 185, 129, 0.3);
+    }
+
+    .btn-success:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 20px rgba(16, 185, 129, 0.4);
+    }
+
+    .btn-warning {
+      background: linear-gradient(135deg, #d97706, #f59e0b);
+      color: white;
+      box-shadow: 0 4px 15px rgba(245, 158, 11, 0.3);
+    }
+
+    .btn-warning:hover {
+      transform: translateY(-2px);
+    }
+
+    .btn-danger {
+      background: linear-gradient(135deg, #b91c1c, #ef4444);
+      color: white;
+      box-shadow: 0 4px 15px rgba(239, 68, 68, 0.3);
+    }
+
+    .btn-danger:hover {
+      transform: translateY(-2px);
+    }
+
+    .btn-purple {
+      background: linear-gradient(135deg, #7e22ce, #a855f7);
+      color: white;
+      box-shadow: 0 4px 15px rgba(168, 85, 247, 0.3);
+    }
+
+    .btn-purple:hover {
+      transform: translateY(-2px);
+    }
+
+    .form-group {
+      margin-bottom: 1rem;
+    }
+
+    label {
+      display: block;
+      font-size: 0.78rem;
+      color: var(--text-muted);
+      margin-bottom: 0.35rem;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    input[type="number"], input[type="text"], input[type="password"] {
+      width: 100%;
+      background: rgba(0, 0, 0, 0.4);
+      border: 1px solid var(--card-border);
+      border-radius: 9px;
+      padding: 0.65rem 0.85rem;
+      color: #ffffff;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.9rem;
+      transition: all 0.2s ease;
+    }
+
+    input:focus {
+      outline: none;
+      border-color: var(--primary);
+      box-shadow: 0 0 12px var(--primary-glow);
+    }
+
+    .note-text {
+      font-size: 0.82rem;
+      color: var(--text-muted);
+      line-height: 1.45;
+    }
+
+    /* Toast Notification */
+    .toast {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      background: rgba(15, 23, 42, 0.95);
+      border: 1px solid var(--primary);
+      color: white;
+      padding: 1rem 1.5rem;
+      border-radius: 14px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.7), 0 0 20px var(--primary-glow);
+      transform: translateY(120px);
+      opacity: 0;
+      transition: all 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+      z-index: 1000;
+      font-size: 0.9rem;
+      max-width: 400px;
+    }
+
+    .toast.show {
+      transform: translateY(0);
+      opacity: 1;
+    }
+
+    /* Modal / Drawer for MQTT Configuration */
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.75);
+      backdrop-filter: blur(6px);
+      z-index: 2000;
+      align-items: center;
+      justify-content: center;
+      padding: 1rem;
+    }
+
+    .modal-box {
+      background: #0f172a;
+      border: 1px solid var(--card-border);
+      border-radius: 20px;
+      max-width: 500px;
+      width: 100%;
+      padding: 1.75rem;
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.8);
+    }
+
+    /* Footer */
+    footer {
+      margin-top: 2rem;
+      padding-top: 1.25rem;
+      border-top: 1px solid var(--card-border);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 1rem;
+      font-size: 0.8rem;
+      color: var(--text-muted);
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <!-- Top Header -->
+    <header>
+      <div class="brand-title">
+        <div class="brand-icon">
+          <svg viewBox="0 0 24 24"><path d="M12 2c-5.33 4.55-8 8.48-8 11.8 0 4.98 3.8 8.2 8 8.2s8-3.22 8-8.2c0-3.32-2.67-7.25-8-11.8z"/></svg>
+        </div>
+        <div>
+          <h1>Smart Tank Cloud Command Center</h1>
+          <div class="subtitle">
+            <span>Global Bidirectional Control over Secure WebSockets (HiveMQ)</span>
+            <span>•</span>
+            <span style="color: #38bdf8; font-family:'JetBrains Mono';">ESP32 Hardware Linked</span>
+          </div>
+        </div>
+      </div>
+      <div class="top-badges">
+        <!-- Live MQTT Status -->
+        <div id="mqttBadge" class="badge badge-mqtt-connecting" onclick="openConfigModal()" style="cursor: pointer;" title="Click to view or edit MQTT Broker settings">
+          <span class="dot"></span>
+          <span id="mqttStatusText">CONNECTING CLOUD...</span>
+        </div>
+        <!-- Tap State Machine -->
+        <div id="stateBadge" class="badge badge-static">
+          <span class="dot"></span>
+          <span id="stateText">STATIC BASELINE</span>
+        </div>
+        <!-- Hardware ADC Indicator -->
+        <div id="adcBadge" class="badge" style="background: rgba(14,165,233,0.15); border-color: rgba(14,165,233,0.3); color: #38bdf8;">
+          ADC: <span id="adcModeText" style="margin-left:4px;">ADS1115 (16-bit)</span>
+        </div>
+        <!-- Cloud OTA Version -->
+        <div id="otaBadge" class="badge" style="background: rgba(168,85,247,0.15); border-color: rgba(168,85,247,0.3); color: #c084fc;">
+          OTA: <span id="otaVersionText" style="margin-left:4px;">v1.2.4</span>
+        </div>
+        <!-- Local IP Link Pill (if user is on home network) -->
+        <a id="localLink" href="http://192.168.29.125/" target="_blank" class="badge btn-secondary" style="color:var(--text-muted); text-decoration:none;" title="Open local node if on same home Wi-Fi">
+          🏠 Local LAN: 192.168.29.125
+        </a>
+      </div>
+    </header>
+
+    <!-- Tap Open Dynamic Compensation Alert Banner -->
+    <div id="compBanner" class="comp-banner" style="display: none;">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+      <div>
+        <strong>Dynamic Pressure Compensation Active:</strong> Tap discharge detected. Water level is frozen at the pre-flow static baseline (<span id="frozenLevel">--</span>%) to prevent false low-reading artifacts from Bernoulli friction drop.
+      </div>
+    </div>
+
+    <!-- Main Live Visualization Grid -->
+    <div class="grid">
+      <!-- Water Tank Column -->
+      <div class="card tank-container">
+        <div class="card-title" style="width: 100%;">
+          <span>Tank Reservoir</span>
+          <span id="tankCapText" style="font-size: 0.8rem; color: var(--accent-cyan); font-family:'JetBrains Mono';">1000 L</span>
+        </div>
+        <div class="tank-glass">
+          <div class="tank-graduations">
+            <span>100%</span>
+            <span>75%</span>
+            <span>50%</span>
+            <span>25%</span>
+            <span>0%</span>
+          </div>
+          <div id="waterFill" class="water-fill">
+            <div class="water-wave"></div>
+          </div>
+        </div>
+        <div class="tank-value-display">
+          <div class="big-pct"><span id="levelPct">--</span><span style="font-size: 1.6rem;">%</span></div>
+          <div class="liters-label"><span id="volumeL">--</span> Liters Available</div>
+        </div>
+      </div>
+
+      <!-- Telemetry & Live Pressure Dynamics Chart -->
+      <div class="card">
+        <div class="card-title">
+          <span>Real-time Hydraulic Metrics</span>
+          <div style="display:flex; align-items:center; gap:0.6rem;">
+            <span id="pingBadge" style="font-size: 0.75rem; color: #10b981; font-family:'JetBrains Mono';">Live 5Hz Stream</span>
+            <button class="btn btn-secondary" style="padding: 0.25rem 0.6rem; font-size: 0.75rem;" onclick="openConfigModal()">Broker Settings</button>
+          </div>
+        </div>
+
+        <div class="metrics-row">
+          <div class="metric-card">
+            <div class="metric-label">Gauge Pressure</div>
+            <div class="metric-val"><span id="gaugePressure">--</span><span class="metric-unit">kPa</span></div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label">Equivalent Head</div>
+            <div class="metric-val"><span id="headM">--</span><span class="metric-unit">m</span></div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label">Sensor Output</div>
+            <div class="metric-val"><span id="sensorV">--</span><span class="metric-unit">V</span></div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label">Rate (dP/dt)</div>
+            <div class="metric-val"><span id="dPdt">0.00</span><span class="metric-unit">kPa/s</span></div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label">Raw 16-Bit ADC</div>
+            <div class="metric-val"><span id="rawAdc">--</span><span class="metric-unit">cts</span></div>
+          </div>
+        </div>
+
+        <div class="chart-container">
+          <canvas id="pressureChart"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <!-- High-Resolution Dual-Sensor Event Recorder (Sheet 2) -->
+    <div class="card" style="border: 1px solid rgba(239, 68, 68, 0.4); box-shadow: 0 0 30px rgba(239, 68, 68, 0.12); margin-bottom: 1.5rem;">
+      <div class="card-title">
+        <div style="display: flex; align-items: center; gap: 0.6rem;">
+          <span id="recDot" style="width: 12px; height: 12px; border-radius: 50%; background: #ef4444; display: inline-block;"></span>
+          <span style="color: #ffffff; font-weight: 700;">High-Resolution Event Capture Engine (10 Hz Precision)</span>
+        </div>
+        <div style="display: flex; gap: 0.5rem; align-items: center;">
+          <span style="font-size: 0.72rem; color: #f43f5e; font-weight: 700; background: rgba(244,63,94,0.15); padding: 3px 8px; border-radius: 6px;">SHEET 2 STREAMING</span>
+          <span style="font-size: 0.72rem; color: #38bdf8; font-weight: 700; background: rgba(56,189,248,0.15); padding: 3px 8px; border-radius: 6px;">GLOBAL CLOUD TRIGGER</span>
+        </div>
+      </div>
+      <p class="note-text" style="margin-bottom: 1rem;">
+        Commands sent from this GitHub Pages dashboard trigger 10 Hz (100 ms) flash burst sampling on the ESP32 hardware, capturing transient dynamics for both pressure and rooftop ultrasound sensors simultaneously, followed by chunked streaming to Google Sheets Sheet 2 (<code>HighRes_Event_Logs</code>) with unique pastel color grouping.
+      </p>
+
+      <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 1rem; margin-bottom: 0.75rem;">
+        <div>
+          <label>Event Name / Description</label>
+          <input type="text" id="highResEventName" placeholder="e.g., Tap 100% Flush, Kitchen Sink 30s Pulse">
+        </div>
+        <div>
+          <label>Duration (Seconds)</label>
+          <input type="number" id="highResDurationSec" value="30" min="5" max="600">
+        </div>
+      </div>
+
+      <!-- Preset Pills -->
+      <div style="display: flex; gap: 0.5rem; margin-bottom: 1rem; flex-wrap: wrap;">
+        <button class="btn btn-secondary" style="padding: 0.3rem 0.7rem; font-size: 0.78rem;" onclick="setEventDuration(15)">15s</button>
+        <button class="btn btn-secondary" style="padding: 0.3rem 0.7rem; font-size: 0.78rem;" onclick="setEventDuration(30)">30s</button>
+        <button class="btn btn-secondary" style="padding: 0.3rem 0.7rem; font-size: 0.78rem;" onclick="setEventDuration(60)">1 min</button>
+        <button class="btn btn-secondary" style="padding: 0.3rem 0.7rem; font-size: 0.78rem;" onclick="setEventDuration(120)">2 min</button>
+        <button class="btn btn-secondary" style="padding: 0.3rem 0.7rem; font-size: 0.78rem;" onclick="setEventDuration(300)">5 min</button>
+      </div>
+
+      <!-- Live Event Status Monitor Box -->
+      <div id="eventLiveBox" style="background: rgba(0,0,0,0.4); border: 1px solid var(--card-border); border-radius: 14px; padding: 1rem; margin-bottom: 1rem;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
+          <span style="font-size: 0.8rem; color: var(--text-muted);">Event Engine Status:</span>
+          <strong id="eventLiveStatus" style="font-size: 0.9rem; color: #10b981;">Ready to Record</strong>
+        </div>
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 0.75rem; text-align: center;">
+          <div style="background: rgba(255,255,255,0.04); padding: 0.6rem; border-radius: 10px;">
+            <div style="font-size: 0.7rem; color: var(--text-muted); text-transform: uppercase;">Elapsed / Target</div>
+            <div id="eventElapsedText" style="font-family:'JetBrains Mono'; font-weight:600; color:#38bdf8; font-size:1.1rem; margin-top:2px;">0.0s / 30s</div>
+          </div>
+          <div style="background: rgba(255,255,255,0.04); padding: 0.6rem; border-radius: 10px;">
+            <div style="font-size: 0.7rem; color: var(--text-muted); text-transform: uppercase;">Flash Memory Samples</div>
+            <div id="eventSamplesText" style="font-family:'JetBrains Mono'; font-weight:600; color:#c084fc; font-size:1.1rem; margin-top:2px;">0 @ 10Hz</div>
+          </div>
+          <div style="background: rgba(255,255,255,0.04); padding: 0.6rem; border-radius: 10px;">
+            <div style="font-size: 0.7rem; color: var(--text-muted); text-transform: uppercase;">Rooftop Ultrasound</div>
+            <div id="eventRooftopText" style="font-family:'JetBrains Mono'; font-weight:600; color:#34d399; font-size:1.1rem; margin-top:2px;">-- cm</div>
+          </div>
+        </div>
+
+        <!-- Progress bar during background chunk upload -->
+        <div id="eventUploadProgressContainer" style="display:none; margin-top: 0.85rem;">
+          <div style="display: flex; justify-content: space-between; font-size: 0.78rem; color: var(--text-muted); margin-bottom: 5px;">
+            <span>Streaming high-res chunks to Google Sheets Sheet 2...</span>
+            <span id="eventUploadPct" style="font-family:'JetBrains Mono'; color:#38bdf8; font-weight:600;">0%</span>
+          </div>
+          <div style="width: 100%; height: 8px; background: rgba(255,255,255,0.1); border-radius: 4px; overflow: hidden;">
+            <div id="eventUploadBar" style="width: 0%; height: 100%; background: linear-gradient(90deg, #38bdf8, #10b981); transition: width 0.3s ease;"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="btn-group">
+        <button id="btnStartEvent" class="btn btn-danger" onclick="sendStartEventCmd()">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="8"/></svg>
+          Record High-Res Event (10 Hz)
+        </button>
+        <button id="btnStopEvent" class="btn btn-secondary" onclick="sendStopEventCmd()" style="display:none;">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12"/></svg>
+          Stop & Stream to Sheet 2
+        </button>
+      </div>
+    </div>
+
+    <!-- Calibration & Synchronization Settings Grid -->
+    <div class="settings-grid">
+      <!-- Two-Point Hydrostatic Calibration -->
+      <div class="card">
+        <div class="card-title">
+          <span>Two-Point Hydrostatic Calibration</span>
+        </div>
+        <p class="note-text" style="margin-bottom: 1.25rem;">
+          Calibrate the pressure baseline from anywhere in the world. Perform once when tank is empty, and once when tank is full.
+        </p>
+
+        <div class="metrics-row" style="margin-bottom: 1.25rem;">
+          <div class="metric-card">
+            <div class="metric-label">Calibrated EMPTY (0%)</div>
+            <div class="metric-val"><span id="valPEmpty">--</span><span class="metric-unit">kPa</span></div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label">Calibrated FULL (100%)</div>
+            <div class="metric-val"><span id="valPFull">--</span><span class="metric-unit">kPa</span></div>
+          </div>
+        </div>
+
+        <div class="btn-group">
+          <button class="btn btn-warning" onclick="sendCalibrateCmd('empty')">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
+            Save Current as EMPTY (0%)
+          </button>
+          <button class="btn btn-success" onclick="sendCalibrateCmd('full')">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
+            Save Current as FULL (100%)
+          </button>
+        </div>
+
+        <hr style="border: 0; border-top: 1px solid var(--card-border); margin: 1.25rem 0;">
+
+        <div style="display: flex; gap: 1rem;">
+          <div class="form-group" style="flex: 1;">
+            <label>Manual Empty kPa</label>
+            <input type="number" step="0.1" id="inputEmptyKpa" placeholder="2.1">
+          </div>
+          <div class="form-group" style="flex: 1;">
+            <label>Manual Full kPa</label>
+            <input type="number" step="0.1" id="inputFullKpa" placeholder="55.2">
+          </div>
+        </div>
+        <button class="btn btn-secondary" onclick="sendManualCalCmd()">Save Custom Calibration</button>
+      </div>
+
+      <!-- Cloud Actions & Google Sheets -->
+      <div class="card">
+        <div class="card-title">
+          <span>Tank Geometry & Cloud Actions</span>
+        </div>
+
+        <div style="display: flex; gap: 1rem;">
+          <div class="form-group" style="flex: 1;">
+            <label>Tank Usable Depth (cm)</label>
+            <input type="number" id="inputTankDepth" value="122">
+          </div>
+          <div class="form-group" style="flex: 1;">
+            <label>Tank Capacity (Liters)</label>
+            <input type="number" id="inputTankCap" value="1000">
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>Google Apps Script Web App URL</label>
+          <input type="text" id="inputScriptUrl" value="https://script.google.com/macros/s/AKfycbx7BzoSWxozJTqKUzqhG7wfK0P1MwTNogPdGqFiA2-jvY_G2s5sMhVWGPw2E-p2y0yU/exec">
+        </div>
+
+        <div class="btn-group">
+          <button class="btn btn-primary" onclick="sendSaveSettingsCmd()">Save Tank Parameters</button>
+          <button class="btn btn-secondary" onclick="sendTriggerSheetsCmd()">Log to Sheets (1-Min Slot)</button>
+          <button class="btn btn-purple" onclick="sendCheckOtaCmd()">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+            Check OTA Update
+          </button>
+        </div>
+
+        <hr style="border: 0; border-top: 1px solid var(--card-border); margin: 1.25rem 0;">
+
+        <div>
+          <label>Remote Hardware Operations</label>
+          <div class="btn-group" style="margin-top:0.4rem;">
+            <button class="btn btn-danger" onclick="sendRebootCmd()">Reboot Node 1</button>
+            <button class="btn btn-secondary" onclick="openSheetsInNewTab()">Open Google Sheets ↗</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Footer -->
+    <footer>
+      <div>
+        <strong>SmartTank Dissertation System</strong> — Real-Time Non-Invasive Hydrostatic Sensing Architecture
+      </div>
+      <div>
+        Global MQTT over WSS (HiveMQ) • Secure Telemetry & Commands
+      </div>
+    </footer>
+  </div>
+
+  <!-- MQTT Configuration Modal -->
+  <div id="configModal" class="modal-overlay">
+    <div class="modal-box">
+      <h3 style="margin-bottom: 0.5rem; font-size: 1.2rem;">MQTT Cloud Connection Settings</h3>
+      <p class="note-text" style="margin-bottom: 1.25rem;">
+        This web app communicates directly with the ESP32 via Secure WebSockets (WSS). No server or PC is required.
+      </p>
+
+      <div class="form-group">
+        <label>Broker WebSocket URL (WSS)</label>
+        <input type="text" id="cfgBrokerUrl" value="wss://broker.hivemq.com:8884/mqtt">
+      </div>
+
+      <div class="form-group">
+        <label>Telemetry Topic (ESP32 -> Cloud)</label>
+        <input type="text" id="cfgTopicTelemetry" value="smarttank/dissertation/tap/live">
+      </div>
+
+      <div class="form-group">
+        <label>Command Topic (Cloud -> ESP32)</label>
+        <input type="text" id="cfgTopicCommand" value="smarttank/dissertation/tap/cmd">
+      </div>
+
+      <div class="form-group">
+        <label>Status Topic (ESP32 Ack -> Cloud)</label>
+        <input type="text" id="cfgTopicStatus" value="smarttank/dissertation/tap/status">
+      </div>
+
+      <div class="btn-group" style="justify-content: flex-end; margin-top: 1.5rem;">
+        <button class="btn btn-secondary" onclick="closeConfigModal()">Cancel</button>
+        <button class="btn btn-primary" onclick="saveAndReconnectMqtt()">Save & Reconnect</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Notification -->
+  <div id="toast" class="toast">Command acknowledged</div>
+
+  <script>
+    // Configuration defaults
+    let brokerUrl = localStorage.getItem('mqtt_broker_url') || 'wss://broker.hivemq.com:8884/mqtt';
+    let topicTelemetry = localStorage.getItem('mqtt_topic_telemetry') || 'smarttank/dissertation/tap/live';
+    let topicCommand = localStorage.getItem('mqtt_topic_command') || 'smarttank/dissertation/tap/cmd';
+    let topicStatus = localStorage.getItem('mqtt_topic_status') || 'smarttank/dissertation/tap/status';
+
+    let mqttClient = null;
+    let chart = null;
+    const labels = [];
+    const pressureData = [];
+    let eventColorIndex = 0;
+    let lastMsgTime = 0;
+
+    // Initialize Chart.js
+    function initChart() {
+      const ctx = document.getElementById('pressureChart').getContext('2d');
+      chart = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: labels,
+          datasets: [{
+            label: 'Gauge Pressure (kPa)',
+            data: pressureData,
+            borderColor: '#38bdf8',
+            backgroundColor: 'rgba(56, 189, 248, 0.08)',
+            borderWidth: 2,
+            tension: 0.25,
+            fill: true,
+            pointRadius: 0
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: {
+            x: { display: false },
+            y: {
+              suggestedMin: 0,
+              suggestedMax: 65,
+              grid: { color: 'rgba(255, 255, 255, 0.05)' },
+              ticks: { color: '#94a3b8', font: { family: 'JetBrains Mono', size: 10 } }
+            }
+          },
+          animation: { duration: 0 }
+        }
+      });
+    }
+
+    // Connect to MQTT Broker over WebSockets
+    function connectMqtt() {
+      updateMqttBadge('connecting', 'CONNECTING...');
+      
+      const clientId = 'SmartTankWeb_' + Math.random().toString(16).substr(2, 8);
+      console.log('Connecting to MQTT Broker:', brokerUrl, 'with ClientId:', clientId);
+
+      if (mqttClient) {
+        try { mqttClient.end(true); } catch(e) {}
+      }
+
+      mqttClient = mqtt.connect(brokerUrl, {
+        clientId: clientId,
+        clean: true,
+        connectTimeout: 7000,
+        reconnectPeriod: 3000
+      });
+
+      mqttClient.on('connect', () => {
+        console.log('✅ Connected to HiveMQ Broker!');
+        updateMqttBadge('online', 'CLOUD CONNECTED');
+        showToast('Connected to Global Cloud Broker');
+
+        // Subscribe to live telemetry and status acknowledgments
+        mqttClient.subscribe(topicTelemetry, (err) => {
+          if (!err) console.log('Subscribed to telemetry:', topicTelemetry);
+        });
+        mqttClient.subscribe(topicStatus, (err) => {
+          if (!err) console.log('Subscribed to status:', topicStatus);
+        });
+      });
+
+      mqttClient.on('message', (topic, message) => {
+        try {
+          const payloadStr = message.toString();
+          const data = JSON.parse(payloadStr);
+
+          if (topic === topicTelemetry) {
+            handleLiveTelemetry(data);
+          } else if (topic === topicStatus) {
+            handleStatusAck(data);
+          }
+        } catch (e) {
+          console.error('Error parsing MQTT message:', e);
+        }
+      });
+
+      mqttClient.on('reconnect', () => {
+        updateMqttBadge('connecting', 'RECONNECTING...');
+      });
+
+      mqttClient.on('offline', () => {
+        updateMqttBadge('offline', 'CLOUD OFFLINE');
+      });
+
+      mqttClient.on('error', (err) => {
+        console.error('MQTT Connection Error:', err);
+        updateMqttBadge('offline', 'ERROR');
+      });
+    }
+
+    function updateMqttBadge(state, text) {
+      const badge = document.getElementById('mqttBadge');
+      const textEl = document.getElementById('mqttStatusText');
+      badge.className = 'badge ' + (state === 'online' ? 'badge-mqtt-online' : state === 'connecting' ? 'badge-mqtt-connecting' : 'badge-mqtt-offline');
+      textEl.innerText = text;
+    }
+
+    // Handle 5 Hz Live Telemetry Stream from ESP32
+    function handleLiveTelemetry(d) {
+      lastMsgTime = Date.now();
+
+      // Tank visuals
+      const pct = Math.max(0, Math.min(100, d.l || 0));
+      document.getElementById('levelPct').innerText = pct.toFixed(1);
+      document.getElementById('waterFill').style.height = pct + '%';
+      document.getElementById('volumeL').innerText = Math.round(d.vol || 0);
+      if (d.cap) document.getElementById('tankCapText').innerText = d.cap + ' L';
+
+      // Hydraulic metrics
+      document.getElementById('gaugePressure').innerText = (d.p !== undefined ? d.p.toFixed(2) : '--');
+      document.getElementById('headM').innerText = (d.h !== undefined ? d.h.toFixed(2) : '--');
+      document.getElementById('sensorV').innerText = (d.v !== undefined ? d.v.toFixed(3) : '--');
+      document.getElementById('dPdt').innerText = (d.d !== undefined ? (d.d > 0 ? '+' : '') + d.d.toFixed(2) : '0.00');
+      document.getElementById('rawAdc').innerText = (d.adc !== undefined ? d.adc : '--');
+
+      // Calibration baselines
+      if (d.p_emp !== undefined) document.getElementById('valPEmpty').innerText = d.p_emp.toFixed(1);
+      if (d.p_ful !== undefined) document.getElementById('valPFull').innerText = d.p_ful.toFixed(1);
+
+      // Firmware version
+      if (d.ver) document.getElementById('otaVersionText').innerText = 'v' + d.ver;
+
+      // Tap State Pill & Dynamic Compensation Banner
+      const stateBadge = document.getElementById('stateBadge');
+      const stateText = document.getElementById('stateText');
+      const compBanner = document.getElementById('compBanner');
+
+      if (d.s === 'TAP_OPEN') {
+        stateBadge.className = 'badge badge-flowing';
+        stateText.innerText = 'TAP OPEN (DYNAMIC FLOW)';
+        compBanner.style.display = 'flex';
+        document.getElementById('frozenLevel').innerText = pct.toFixed(1);
+      } else if (d.s === 'SETTLING') {
+        stateBadge.className = 'badge badge-settling';
+        stateText.innerText = 'SETTLING (HAMMER REJECTION)';
+        compBanner.style.display = 'none';
+      } else {
+        stateBadge.className = 'badge badge-static';
+        stateText.innerText = 'STATIC BASELINE';
+        compBanner.style.display = 'none';
+      }
+
+      // Event Recorder Monitor
+      updateEventMonitor(d);
+
+      // Chart Update (5 Hz)
+      const now = new Date().toLocaleTimeString();
+      labels.push(now);
+      pressureData.push(d.p);
+      if (labels.length > 50) {
+        labels.shift();
+        pressureData.shift();
+      }
+      chart.update();
+    }
+
+    // Update Event Recording Box
+    function updateEventMonitor(d) {
+      const statusEl = document.getElementById('eventLiveStatus');
+      const elapsedEl = document.getElementById('eventElapsedText');
+      const samplesEl = document.getElementById('eventSamplesText');
+      const rooftopEl = document.getElementById('eventRooftopText');
+      const progContainer = document.getElementById('eventUploadProgressContainer');
+      const uploadBar = document.getElementById('eventUploadBar');
+      const uploadPct = document.getElementById('eventUploadPct');
+      const recDot = document.getElementById('recDot');
+      const btnStart = document.getElementById('btnStartEvent');
+      const btnStop = document.getElementById('btnStopEvent');
+
+      if (d.rec) {
+        statusEl.innerText = '🔴 RECORDING (10 Hz High-Speed Burst)...';
+        statusEl.style.color = '#ef4444';
+        recDot.style.background = '#ef4444';
+        recDot.style.animation = 'pulseAlert 1s infinite';
+        elapsedEl.innerText = (d.rec_s !== undefined ? d.rec_s.toFixed(1) : '0.0') + 's / ' + (d.dur || 30) + 's';
+        samplesEl.innerText = (d.samples || 0) + ' @ 10Hz';
+        progContainer.style.display = 'none';
+        btnStart.style.display = 'none';
+        btnStop.style.display = 'inline-flex';
+      } else if (d.up_pct !== undefined && d.up_pct > 0 && d.up_pct < 100) {
+        statusEl.innerText = '🚀 STREAMING TO SHEET 2...';
+        statusEl.style.color = '#38bdf8';
+        recDot.style.background = '#38bdf8';
+        recDot.style.animation = 'none';
+        progContainer.style.display = 'block';
+        uploadBar.style.width = d.up_pct + '%';
+        uploadPct.innerText = d.up_pct + '%';
+        elapsedEl.innerText = 'Uploaded ' + d.up_pct + '%';
+        samplesEl.innerText = (d.samples || 0) + ' samples';
+        btnStart.style.display = 'none';
+        btnStop.style.display = 'none';
+      } else {
+        statusEl.innerText = 'Ready to Record';
+        statusEl.style.color = '#10b981';
+        recDot.style.background = '#10b981';
+        recDot.style.animation = 'none';
+        progContainer.style.display = 'none';
+        btnStart.style.display = 'inline-flex';
+        btnStop.style.display = 'none';
+      }
+
+      // Rooftop Ultrasound dual-sensor status
+      if (d.u_d && d.u_d > 0) {
+        rooftopEl.innerText = d.u_d.toFixed(1) + ' cm (' + d.u_l.toFixed(1) + '%)';
+        rooftopEl.style.color = '#34d399';
+      } else {
+        rooftopEl.innerText = 'OFFLINE (-- cm)';
+        rooftopEl.style.color = '#94a3b8';
+      }
+    }
+
+    // Handle Status / Ack Messages from ESP32
+    function handleStatusAck(d) {
+      if (d.msg) {
+        showToast('ESP32: ' + d.msg);
+      }
+    }
+
+    // Send Commands over MQTT to ESP32
+    function publishCommand(cmdObj) {
+      if (!mqttClient || !mqttClient.connected) {
+        showToast('⚠️ Cloud disconnected! Reconnecting...');
+        return false;
+      }
+      const payload = JSON.stringify(cmdObj);
+      mqttClient.publish(topicCommand, payload);
+      console.log('🚀 Published Command:', payload, 'to topic:', topicCommand);
+      return true;
+    }
+
+    // Command Triggers
+    function setEventDuration(sec) {
+      document.getElementById('highResDurationSec').value = sec;
+      const nameEl = document.getElementById('highResEventName');
+      if (!nameEl.value || nameEl.value.trim() === '') {
+        nameEl.value = 'Tap Turn Test (' + sec + 's)';
+      }
+    }
+
+    function sendStartEventCmd() {
+      const name = document.getElementById('highResEventName').value.trim() || 'Tap Transient Event';
+      const dur = parseFloat(document.getElementById('highResDurationSec').value) || 30;
+      publishCommand({
+        cmd: 'start_event',
+        name: name,
+        duration: dur,
+        color: eventColorIndex++
+      });
+      showToast('Starting 10 Hz Event: ' + name);
+    }
+
+    function sendStopEventCmd() {
+      publishCommand({ cmd: 'stop_event' });
+      showToast('Stopping event. Streaming to Sheet 2...');
+    }
+
+    function sendCalibrateCmd(type) {
+      if (!confirm(`Calibrate current pressure as ${type.toUpperCase()} baseline on ESP32?`)) return;
+      publishCommand({ cmd: type === 'empty' ? 'cal_empty' : 'cal_full' });
+      showToast('Sent ' + type.toUpperCase() + ' calibration command');
+    }
+
+    function sendManualCalCmd() {
+      const emp = parseFloat(document.getElementById('inputEmptyKpa').value);
+      const ful = parseFloat(document.getElementById('inputFullKpa').value);
+      if (isNaN(emp) || isNaN(ful) || ful <= emp) {
+        alert('Invalid values: Full kPa must be greater than Empty kPa');
+        return;
+      }
+      publishCommand({ cmd: 'manual_cal', p_empty: emp, p_full: ful });
+      showToast('Sent manual calibration update');
+    }
+
+    function sendSaveSettingsCmd() {
+      const depth = parseFloat(document.getElementById('inputTankDepth').value);
+      const cap = parseFloat(document.getElementById('inputTankCap').value);
+      const url = document.getElementById('inputScriptUrl').value.trim();
+      publishCommand({ cmd: 'save_settings', depth: depth, cap: cap, url: url });
+      showToast('Saving tank parameters to ESP32 Flash...');
+    }
+
+    function sendTriggerSheetsCmd() {
+      publishCommand({ cmd: 'log_sheets' });
+      showToast('Triggering 1-minute Google Sheets log...');
+    }
+
+    function sendCheckOtaCmd() {
+      publishCommand({ cmd: 'check_ota' });
+      showToast('ESP32 checking GitHub for new OTA firmware...');
+    }
+
+    function sendRebootCmd() {
+      if (!confirm('Reboot Node 1 (Pressure Node) hardware remotely?')) return;
+      publishCommand({ cmd: 'reboot' });
+      showToast('Rebooting ESP32 Node 1...');
+    }
+
+    function openSheetsInNewTab() {
+      const url = document.getElementById('inputScriptUrl').value.trim();
+      if (url.includes('google.com')) {
+        window.open('https://docs.google.com/spreadsheets/', '_blank');
+      } else {
+        alert('Please check your Google Sheets URL configuration.');
+      }
+    }
+
+    // Toast UI
+    function showToast(msg) {
+      const t = document.getElementById('toast');
+      t.innerText = msg;
+      t.classList.add('show');
+      setTimeout(() => t.classList.remove('show'), 4000);
+    }
+
+    // Modal Configuration Handlers
+    function openConfigModal() {
+      document.getElementById('cfgBrokerUrl').value = brokerUrl;
+      document.getElementById('cfgTopicTelemetry').value = topicTelemetry;
+      document.getElementById('cfgTopicCommand').value = topicCommand;
+      document.getElementById('cfgTopicStatus').value = topicStatus;
+      document.getElementById('configModal').style.display = 'flex';
+    }
+
+    function closeConfigModal() {
+      document.getElementById('configModal').style.display = 'none';
+    }
+
+    function saveAndReconnectMqtt() {
+      brokerUrl = document.getElementById('cfgBrokerUrl').value.trim();
+      topicTelemetry = document.getElementById('cfgTopicTelemetry').value.trim();
+      topicCommand = document.getElementById('cfgTopicCommand').value.trim();
+      topicStatus = document.getElementById('cfgTopicStatus').value.trim();
+
+      localStorage.setItem('mqtt_broker_url', brokerUrl);
+      localStorage.setItem('mqtt_topic_telemetry', topicTelemetry);
+      localStorage.setItem('mqtt_topic_command', topicCommand);
+      localStorage.setItem('mqtt_topic_status', topicStatus);
+
+      closeConfigModal();
+      showToast('Settings saved. Reconnecting...');
+      connectMqtt();
+    }
+
+    // Startup
+    window.onload = () => {
+      initChart();
+      connectMqtt();
+    };
+  </script>
+</body>
+</html>

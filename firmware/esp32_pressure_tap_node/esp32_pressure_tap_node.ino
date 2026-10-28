@@ -132,6 +132,13 @@ void handleEventStartApi();
 void handleEventStopApi();
 void handleEventStatusApi();
 
+// MQTT Cloud Handlers
+void maintainMqtt();
+void publishMqttTelemetry();
+void publishMqttStatus(const String& msg);
+void onMqttMessageReceived(char* topic, byte* payload, unsigned int length);
+String getJsonField(const String& json, const String& key);
+
 // =========================================================================
 // SETUP
 // =========================================================================
@@ -203,8 +210,10 @@ void setup() {
   server.begin();
   Serial.println(F("[HTTP] Embedded Web Server started on port 80"));
 
-  // Initialize MQTT Client
+  // Initialize MQTT Client with Cloud Command Listener & Buffer Size
   mqttClient.setServer(MQTT_BROKER, MQTT_PORT);
+  mqttClient.setCallback(onMqttMessageReceived);
+  mqttClient.setBufferSize(512);
 
   // Initial sensor warm-up read
   for (int i = 0; i < 20; i++) {
@@ -215,7 +224,7 @@ void setup() {
   prevPressure = filteredPressure;
 }
 
-// Ensure MQTT connection without blocking loop
+// Ensure MQTT connection and auto-subscribe to Cloud Command Topic
 void maintainMqtt() {
   if (WiFi.status() != WL_CONNECTED) return;
   if (!mqttClient.connected()) {
@@ -224,7 +233,10 @@ void maintainMqtt() {
       lastReconnectAttempt = millis();
       String clientId = "ESP32Tap-" + String((uint32_t)ESP.getEfuseMac(), HEX);
       if (mqttClient.connect(clientId.c_str())) {
-        Serial.println(F("[MQTT] Connected to HiveMQ Broker!"));
+        Serial.println(F("[MQTT] ✅ Connected to Global HiveMQ Broker!"));
+        mqttClient.subscribe(MQTT_TOPIC_COMMAND);
+        Serial.printf("[MQTT] 🛰️ Subscribed to Cloud Command Topic: %s\n", MQTT_TOPIC_COMMAND);
+        publishMqttStatus("ESP32 Online & Ready");
       }
     }
   } else {
@@ -232,19 +244,145 @@ void maintainMqtt() {
   }
 }
 
-// Publish 10 Hz Real-Time Telemetry to Global MQTT Broker
+// Helper: extract simple key-value from JSON string (zero-dependency)
+String getJsonField(const String& json, const String& key) {
+  String search = "\"" + key + "\":";
+  int idx = json.indexOf(search);
+  if (idx == -1) {
+    search = "\"" + key + "\" :";
+    idx = json.indexOf(search);
+  }
+  if (idx == -1) return "";
+  int valStart = idx + search.length();
+  while (valStart < json.length() && (json[valStart] == ' ' || json[valStart] == '\"')) valStart++;
+  int valEnd = valStart;
+  while (valEnd < json.length() && json[valEnd] != ',' && json[valEnd] != '}' && json[valEnd] != '\"') valEnd++;
+  return json.substring(valStart, valEnd);
+}
+
+// Publish Status / Ack to Cloud Web Dashboard
+void publishMqttStatus(const String& msg) {
+  if (!mqttClient.connected()) return;
+  char buf[256];
+  snprintf(buf, sizeof(buf), "{\"status\":\"ok\",\"msg\":\"%s\",\"p\":%.2f,\"l\":%.1f,\"ver\":\"%s\"}",
+           msg.c_str(), filteredPressure, waterLevelPct, FIRMWARE_VERSION);
+  mqttClient.publish(MQTT_TOPIC_STATUS, buf);
+}
+
+// Inbound Cloud MQTT Command Listener
+void onMqttMessageReceived(char* topic, byte* payload, unsigned int length) {
+  if (length == 0 || length >= 512) return;
+  char message[512];
+  memcpy(message, payload, length);
+  message[length] = '\0';
+  String msgStr = String(message);
+  Serial.printf("[MQTT-CMD] 📥 Received from Cloud: %s\n", msgStr.c_str());
+
+  String cmd = getJsonField(msgStr, "cmd");
+
+  if (cmd == "start_event") {
+    String name = getJsonField(msgStr, "name");
+    if (name.length() == 0) name = "Cloud Event";
+    String durStr = getJsonField(msgStr, "duration");
+    float dur = durStr.length() > 0 ? durStr.toFloat() : 30.0f;
+    String colStr = getJsonField(msgStr, "color");
+    int colorIdx = colStr.length() > 0 ? colStr.toInt() : 0;
+
+    bool ok = eventRecorder.startEvent(name, dur, colorIdx);
+    publishMqttStatus(ok ? ("Event Started: " + name) : "Event Busy");
+  } 
+  else if (cmd == "stop_event") {
+    eventRecorder.stopEvent();
+    publishMqttStatus("Event Stopped. Streaming to Sheet 2...");
+  } 
+  else if (cmd == "cal_empty") {
+    pEmptyKPa = filteredPressure;
+    saveSettings();
+    Serial.printf("[MQTT] Calibrated EMPTY: %.2f kPa\n", pEmptyKPa);
+    publishMqttStatus("Calibrated EMPTY: " + String(pEmptyKPa, 2) + " kPa");
+  } 
+  else if (cmd == "cal_full") {
+    pFullKPa = filteredPressure;
+    saveSettings();
+    Serial.printf("[MQTT] Calibrated FULL: %.2f kPa\n", pFullKPa);
+    publishMqttStatus("Calibrated FULL: " + String(pFullKPa, 2) + " kPa");
+  } 
+  else if (cmd == "manual_cal") {
+    String empStr = getJsonField(msgStr, "p_empty");
+    String fulStr = getJsonField(msgStr, "p_full");
+    if (empStr.length() > 0 && fulStr.length() > 0) {
+      float emp = empStr.toFloat();
+      float ful = fulStr.toFloat();
+      if (ful > emp) {
+        pEmptyKPa = emp;
+        pFullKPa = ful;
+        saveSettings();
+        publishMqttStatus("Cal Updated: " + String(pEmptyKPa, 1) + " to " + String(pFullKPa, 1) + " kPa");
+      } else {
+        publishMqttStatus("Cal Error: FULL must be > EMPTY");
+      }
+    }
+  }
+  else if (cmd == "save_settings") {
+    String depthStr = getJsonField(msgStr, "depth");
+    String capStr = getJsonField(msgStr, "cap");
+    String urlStr = getJsonField(msgStr, "url");
+    if (depthStr.length() > 0) tankDepthCm = depthStr.toFloat();
+    if (capStr.length() > 0) tankCapacityL = capStr.toFloat();
+    if (urlStr.length() > 0) googleScriptUrl = urlStr;
+    saveSettings();
+    publishMqttStatus("Settings Saved: Depth=" + String(tankDepthCm, 1) + "cm, Cap=" + String(tankCapacityL, 0) + "L");
+  }
+  else if (cmd == "log_sheets") {
+    struct tm timeinfo;
+    char timeBuf[30] = "2026-10-28 12:00:00";
+    if (getLocalTime(&timeinfo)) {
+      strftime(timeBuf, sizeof(timeBuf), "%Y-%m-%d %H:%M:00", &timeinfo);
+    }
+    bool ok = sendToGoogleSheets(String(timeBuf));
+    publishMqttStatus(ok ? "Google Sheets Logged" : "Google Sheets Failed");
+  } 
+  else if (cmd == "check_ota") {
+    cloudOTA.checkAndUpdate(false);
+    publishMqttStatus("OTA: " + cloudOTA.getStatus());
+  }
+  else if (cmd == "reboot") {
+    publishMqttStatus("Rebooting Node 1...");
+    delay(500);
+    ESP.restart();
+  }
+}
+
+// Publish 5 Hz Real-Time Telemetry to Global MQTT Broker
 void publishMqttTelemetry() {
   if (!mqttClient.connected()) return;
+  static unsigned long lastMqttPub = 0;
+  if (millis() - lastMqttPub < 200) return; // 5 Hz rate limit (200 ms)
+  lastMqttPub = millis();
 
-  char payload[128];
+  char payload[512];
   const char* st = (tapState == STATE_TAP_OPEN) ? "TAP_OPEN" :
                    (tapState == STATE_SETTLING) ? "SETTLING" : "STATIC";
 
-  // Compact JSON payload sent at 10 Hz:
-  // p: Pressure (kPa), l: Level (%), v: Voltage (V), d: dP/dt, s: State
   snprintf(payload, sizeof(payload),
-           "{\"p\":%.2f,\"l\":%.1f,\"v\":%.3f,\"d\":%.2f,\"s\":\"%s\"}",
-           filteredPressure, waterLevelPct, sensorVoltage, dPdt, st);
+           "{\"p\":%.2f,\"l\":%.1f,\"v\":%.3f,\"d\":%.2f,\"s\":\"%s\","
+           "\"h\":%.2f,\"vol\":%.0f,\"adc\":%d,"
+           "\"rec\":%s,\"rec_s\":%.1f,\"dur\":%.0f,\"samples\":%d,\"evt\":\"%s\","
+           "\"u_d\":%.1f,\"u_l\":%.1f,"
+           "\"up_pct\":%d,"
+           "\"p_emp\":%.1f,\"p_ful\":%.1f,"
+           "\"depth\":%.1f,\"cap\":%.0f,"
+           "\"ver\":\"%s\"}",
+           filteredPressure, waterLevelPct, sensorVoltage, dPdt, st,
+           waterHeadM, waterVolumeL, (int)rawAdcAvg,
+           eventRecorder.isRecording() ? "true" : "false",
+           eventRecorder.getElapsedSec(), eventRecorder.getDurationSec(),
+           eventRecorder.getSamplesCount(), eventRecorder.getEventName().c_str(),
+           eventRecorder.getRooftopDist(), eventRecorder.getRooftopLevel(),
+           eventRecorder.getUploadProgressPct(),
+           pEmptyKPa, pFullKPa,
+           tankDepthCm, tankCapacityL,
+           FIRMWARE_VERSION);
 
   mqttClient.publish(MQTT_TOPIC_TELEMETRY, payload);
 }

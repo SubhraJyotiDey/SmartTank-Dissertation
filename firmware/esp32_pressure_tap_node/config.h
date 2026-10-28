@@ -112,17 +112,22 @@
 #define DAYLIGHT_OFFSET_SEC     0       // No daylight savings in IST (adjust if needed)
 
 // =========================================================================
-// 7. REAL-TIME 10 HZ MQTT STREAMING CONFIGURATION
+// 7. REAL-TIME 10 HZ MQTT STREAMING & BIDIRECTIONAL CLOUD CONTROL
 // =========================================================================
 // Free Global MQTT Broker (Zero account required, works with WebSockets)
 #define MQTT_BROKER             "broker.hivemq.com"
 #define MQTT_PORT               1883
-// Unique topic for your tank setup
+#define MQTT_WS_PORT            8884    // Secure WebSockets (WSS) port for Web Browsers
+
+// Unique topics for your smart tank setup:
 #define MQTT_TOPIC_TELEMETRY    "smarttank/dissertation/tap/live"
+#define MQTT_TOPIC_COMMAND      "smarttank/dissertation/tap/cmd"
+#define MQTT_TOPIC_STATUS       "smarttank/dissertation/tap/status"
+
 // =========================================================================
 // 8. AUTOMATIC CLOUD OVER-THE-AIR (OTA) SELF-UPDATE (EVERY 15 MINUTES)
 // =========================================================================
-#define FIRMWARE_VERSION            "1.2.3"
+#define FIRMWARE_VERSION            "1.2.4"
 #define AUTO_OTA_ENABLED            true
 #define OTA_CHECK_INTERVAL_MIN      15      // Check for new updates every 15 minutes
 #define OTA_NODE_NAME               "pressure_node"

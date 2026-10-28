@@ -490,6 +490,9 @@ const char DASHBOARD_HTML[] PROGMEM = R"rawliteral(
         <div class="badge" style="background: rgba(255,255,255,0.06); border-color: rgba(255,255,255,0.1); color: var(--text-muted);">
           NTP: <span id="clockTime" style="color:#fff; margin-left:4px;">--:--:--</span>
         </div>
+        <a href="https://subhrajyotidey.github.io/SmartTank-Dissertation/" target="_blank" class="badge" style="background: rgba(14,165,233,0.15); border-color: rgba(14,165,233,0.3); color: #38bdf8; text-decoration:none;" title="Open Global Cloud Dashboard (accessible anywhere in the world)">
+          🌐 Global Cloud Dashboard ↗
+        </a>
       </div>
     </header>
 

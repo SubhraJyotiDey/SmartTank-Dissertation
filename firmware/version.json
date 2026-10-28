@@ -1,13 +1,13 @@
 {
-  "firmware_version": "1.2.3",
-  "published_at": "2026-10-28T10:55:00Z",
+  "firmware_version": "1.2.4",
+  "published_at": "2026-10-28T12:20:00Z",
   "pressure_node": {
-    "version": "1.2.3",
+    "version": "1.2.4",
     "filename": "pressure_node_firmware.bin",
-    "description": "Pressure Tap Node with getLocation 302 resolver, non-forcing OTA check, and Core 0 poller."
+    "description": "Pressure Tap Node with Bidirectional Global Cloud MQTT Command Listener and 10 Hz Telemetry."
   },
   "ultrasonic_node": {
-    "version": "1.2.3",
+    "version": "1.2.4",
     "filename": "ultrasonic_node_firmware.bin",
     "description": "Ultrasonic Node with local /api/reading server and 15-minute Auto-OTA."
   }
