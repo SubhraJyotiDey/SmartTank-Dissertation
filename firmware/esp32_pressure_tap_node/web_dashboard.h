@@ -473,7 +473,12 @@ const char DASHBOARD_HTML[] PROGMEM = R"rawliteral(
         </div>
         <div>
           <h1>Smart Tank Hydrostatic Estimator</h1>
-          <div class="subtitle">Non-Invasive Inline Pressure Sensing Node (ESP32)</div>
+          <div class="subtitle">
+            <span>Designed &amp; Developed by</span>
+            <span style="color:#38bdf8; font-weight:600;">Subhra Jyoti Dey</span>
+            <span>•</span>
+            <span>Non-Invasive Sensing Architecture</span>
+          </div>
         </div>
       </div>
       <div class="top-badges">
@@ -485,12 +490,12 @@ const char DASHBOARD_HTML[] PROGMEM = R"rawliteral(
           <span id="stateText">STATIC BASELINE</span>
         </div>
         <div id="otaBadge" class="badge" style="background: rgba(168,85,247,0.15); border-color: rgba(168,85,247,0.3); color: #c084fc; font-weight: 600;">
-          OTA: <span id="otaModeText" style="margin-left:4px;">Auto 15m (v1.1.0)</span>
+          OTA: <span id="otaModeText" style="margin-left:4px;">Auto 15m (v1.2.4)</span>
         </div>
         <div class="badge" style="background: rgba(255,255,255,0.06); border-color: rgba(255,255,255,0.1); color: var(--text-muted);">
           NTP: <span id="clockTime" style="color:#fff; margin-left:4px;">--:--:--</span>
         </div>
-        <a href="https://subhrajyotidey.github.io/SmartTank-Dissertation/" target="_blank" class="badge" style="background: rgba(14,165,233,0.15); border-color: rgba(14,165,233,0.3); color: #38bdf8; text-decoration:none;" title="Open Global Cloud Dashboard (accessible anywhere in the world)">
+        <a href="https://subhrajyotidey.github.io/smarttank-dashboard/" target="_blank" class="badge" style="background: rgba(14,165,233,0.15); border-color: rgba(14,165,233,0.3); color: #38bdf8; text-decoration:none;" title="Open Global Cloud Dashboard (accessible anywhere in the world)">
           🌐 Global Cloud Dashboard ↗
         </a>
       </div>
@@ -520,10 +525,18 @@ const char DASHBOARD_HTML[] PROGMEM = R"rawliteral(
             <span>25%</span>
             <span>0%</span>
           </div>
+
+          <!-- Solid Hydrostatic Fluid Fill -->
           <div id="waterFill" class="water-fill" style="height: 0%;">
             <div class="water-wave"></div>
           </div>
+
+          <!-- DOTTED YELLOW LINE: Rooftop Ultrasonic Water Level Estimation -->
+          <div id="usLevelLine" style="display: none; position: absolute; left: 0; width: 100%; height: 0; border-top: 3px dotted #eab308; box-shadow: 0 0 12px rgba(234, 179, 8, 0.9); z-index: 10; pointer-events: none; transition: bottom 0.6s cubic-bezier(0.4, 0, 0.2, 1); bottom: 0%;">
+            <span style="position: absolute; left: 8px; top: -19px; background: rgba(15, 23, 42, 0.92); border: 1px solid #eab308; color: #facc15; font-size: 0.62rem; font-family: 'JetBrains Mono', monospace; font-weight: 700; padding: 1px 5px; border-radius: 4px; white-space: nowrap;">US: <span id="usLevelBadgeVal">--%</span></span>
+          </div>
         </div>
+
         <div class="tank-value-display">
           <div class="big-pct"><span id="levelPct">--</span><span style="font-size: 1.5rem;">%</span></div>
           <div class="liters-label"><span id="volumeL">--</span> Liters Available</div>
@@ -533,7 +546,7 @@ const char DASHBOARD_HTML[] PROGMEM = R"rawliteral(
       <!-- Telemetry & Live Pressure Dynamics Chart -->
       <div class="card">
         <div class="card-title">
-          <span>Real-time Hydraulic Metrics</span>
+          <span>Real-time Hydraulic &amp; Ultrasonic Metrics</span>
           <span style="font-size: 0.8rem; color: var(--text-muted);">Sampling @ 10Hz</span>
         </div>
 
@@ -553,6 +566,14 @@ const char DASHBOARD_HTML[] PROGMEM = R"rawliteral(
           <div class="metric-card">
             <div class="metric-label">Rate (dP/dt)</div>
             <div class="metric-val"><span id="dPdt">0.00</span><span class="metric-unit">kPa/s</span></div>
+          </div>
+          <div class="metric-card" style="border-color: rgba(234, 179, 8, 0.35);">
+            <div class="metric-label" style="color: #fde047;">US Ground Truth</div>
+            <div class="metric-val" style="color: #facc15;"><span id="usLiveLevel">--</span><span class="metric-unit" style="color: #fde047;">%</span></div>
+          </div>
+          <div class="metric-card" style="border-color: rgba(52, 211, 153, 0.35);">
+            <div class="metric-label" style="color: #6ee7b7;">US Distance</div>
+            <div class="metric-val" style="color: #34d399;"><span id="usLiveDist">--</span><span class="metric-unit" style="color: #6ee7b7;">cm</span></div>
           </div>
         </div>
 
@@ -765,14 +786,23 @@ const char DASHBOARD_HTML[] PROGMEM = R"rawliteral(
         <p class="note-text" style="margin-bottom: 1rem;">
           Wipe all previous test logs from Google Sheets and begin the clean 24-hour synchronized recording now.
         </p>
-        <div style="margin-top: 1.5rem;">
+        <div style="margin-top: 1.5rem; display: flex; gap: 0.6rem; flex-wrap: wrap;">
           <button class="btn btn-danger" onclick="clearSheetData()">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-            Clear Sheet & Start 24-Hr Experiment
+            Clear Sheet &amp; Start 24-Hr Experiment
+          </button>
+          <button class="btn btn-warning" onclick="rebootNode(2)" style="font-size:0.8rem;">
+            🔄 Reboot Node 2 (Ultrasonic)
           </button>
         </div>
       </div>
     </div>
+
+    <!-- Footer -->
+    <footer style="margin-top: 2rem; padding-top: 1.25rem; border-top: 1px solid var(--card-border); display: flex; justify-content: space-between; flex-wrap: wrap; gap: 0.8rem; font-size: 0.82rem; color: var(--text-muted);">
+      <div><strong>SmartTank Dissertation System</strong> — Real-Time Non-Invasive Hydrostatic Sensing Architecture</div>
+      <div>Designed &amp; Developed by <strong style="color: #38bdf8;">Subhra Jyoti Dey</strong> • Dissertation 2026</div>
+    </footer>
   </div>
 
   <div id="toast" class="toast">Action completed successfully</div>
@@ -853,6 +883,28 @@ const char DASHBOARD_HTML[] PROGMEM = R"rawliteral(
         document.getElementById('dPdt').innerText = (d.dp_dt > 0 ? '+' : '') + d.dp_dt.toFixed(2);
         document.getElementById('clockTime').innerText = d.time_str || '--:--:--';
         document.getElementById('nextLogTime').innerText = d.next_log_slot || '--';
+
+        // Rooftop Ultrasound Dotted Line & Metrics
+        const usLine = document.getElementById('usLevelLine');
+        const usBadge = document.getElementById('usLevelBadgeVal');
+        const usLiveLvl = document.getElementById('usLiveLevel');
+        const usLiveDst = document.getElementById('usLiveDist');
+
+        if (d.rooftop_level !== undefined && d.rooftop_level >= 0) {
+          usLine.style.display = 'block';
+          usLine.style.bottom = d.rooftop_level + '%';
+          usBadge.innerText = d.rooftop_level.toFixed(1) + '%';
+          usLiveLvl.innerText = d.rooftop_level.toFixed(1);
+        } else {
+          usLine.style.display = 'none';
+          usLiveLvl.innerText = 'OFFLINE';
+        }
+
+        if (d.rooftop_dist !== undefined && d.rooftop_dist > 0) {
+          usLiveDst.innerText = d.rooftop_dist.toFixed(1);
+        } else {
+          usLiveDst.innerText = 'OFFLINE';
+        }
 
         // Calibration Display
         document.getElementById('valPEmpty').innerText = d.p_empty.toFixed(1);
@@ -997,6 +1049,20 @@ const char DASHBOARD_HTML[] PROGMEM = R"rawliteral(
         showToast("Google Sheet reset command sent successfully!");
       } catch (e) {
         showToast("Error clearing sheet");
+      }
+    }
+
+    async function rebootNode(nodeNum) {
+      const name = nodeNum === 1 ? 'Node 1 (Pressure)' : 'Node 2 (Rooftop Ultrasonic)';
+      if (!confirm(`Are you sure you want to reboot ${name}?`)) return;
+      if (nodeNum === 2) {
+        showToast('Sending reboot command to Node 2...');
+        try {
+          await fetch('http://192.168.29.130/api/reboot', { method: 'POST', mode: 'no-cors' });
+          showToast('Reboot command sent to Node 2!');
+        } catch(e) {
+          showToast('Failed to reach Node 2');
+        }
       }
     }
 

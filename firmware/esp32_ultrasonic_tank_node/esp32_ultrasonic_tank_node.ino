@@ -105,6 +105,14 @@ void setup() {
     json += "}";
     server.send(200, "application/json", json);
   });
+
+  // Remote reboot endpoint
+  server.on("/api/reboot", HTTP_ANY, []() {
+    server.send(200, "application/json", "{\"status\":\"ok\",\"message\":\"Rebooting Node 2...\"}");
+    delay(500);
+    ESP.restart();
+  });
+
   server.begin();
   Serial.println(F("[HTTP] Local telemetry API started on port 80"));
 

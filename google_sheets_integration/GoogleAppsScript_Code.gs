@@ -23,11 +23,14 @@ function onOpen() {
   try {
     var ui = SpreadsheetApp.getUi();
     ui.createMenu('📊 Water Level Analysis')
+      .addItem('⚙️ Custom Analysis Dialog (Select Sheet & Rows)...', 'showCustomWaterLevelAnalysisDialog')
+      .addItem('📈 Quick Plot Active Sheet Selection', 'plotActiveSheetSelection')
+      .addSeparator()
       .addItem('📈 Plot Comparison Graph (Rows 2283 - 2654)', 'createComparisonChart2283_2654')
       .addItem('🎯 Recalculate Ground Truth (11.0 cm = Full Tank)', 'recalculateUltrasonicGroundTruth2283_2654')
-      .addItem('🚀 Run Both: Recalibrate & Plot Graph (Rows 2283 - 2654)', 'runRecalibrateAndPlot2283_2654')
+      .addItem('🚀 Run Both: Recalibrate & Plot (Rows 2283 - 2654)', 'runRecalibrateAndPlot2283_2654')
       .addSeparator()
-      .addItem('⚙️ Custom Row Range Plot...', 'promptCustomComparisonChart')
+      .addItem('⚙️ Custom Row & Sheet Prompt...', 'promptCustomComparisonChart')
       .addToUi();
   } catch(e) {}
 }
@@ -628,46 +631,197 @@ function runRecalibrateAndPlot1138_1474() {
 }
 
 /**
- * Menu Action: Interactive prompt for any custom row range
+ * Menu Action: Interactive prompt for custom sheet and row range
  */
 function promptCustomComparisonChart() {
   var ui = SpreadsheetApp.getUi();
-  var startResp = ui.prompt("Custom Comparison Graph", "Enter start row (e.g. 1138):", ui.ButtonSet.OK_CANCEL);
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  
+  // Sheet Selection Prompt
+  var defaultSheet = ss.getActiveSheet().getName();
+  var sheetResp = ui.prompt(
+    "Custom Comparison Graph — Step 1/3",
+    "Enter Target Sheet Name:\n• Type '1' for WaterLevel_Synchronized_Logs\n• Type '2' for HighRes_Event_Logs\n• Or type any sheet name (Default: " + defaultSheet + "):",
+    ui.ButtonSet.OK_CANCEL
+  );
+  if (sheetResp.getSelectedButton() !== ui.Button.OK) return;
+  var sheetInput = sheetResp.getResponseText().trim();
+  var targetSheetName = defaultSheet;
+  if (sheetInput === "1") targetSheetName = "WaterLevel_Synchronized_Logs";
+  else if (sheetInput === "2") targetSheetName = "HighRes_Event_Logs";
+  else if (sheetInput.length > 0) targetSheetName = sheetInput;
+
+  var targetSheet = ss.getSheetByName(targetSheetName);
+  if (!targetSheet) {
+    ui.alert("⚠️ Sheet '" + targetSheetName + "' not found! Please check the name.");
+    return;
+  }
+
+  var maxRows = targetSheet.getLastRow();
+  var defaultStart = Math.min(2, maxRows);
+  var defaultEnd = maxRows;
+
+  // Start Row Prompt
+  var startResp = ui.prompt(
+    "Custom Comparison Graph — Step 2/3",
+    "Target Sheet: [" + targetSheetName + "] (Total Rows: " + maxRows + ")\nEnter START row (e.g. " + defaultStart + "):",
+    ui.ButtonSet.OK_CANCEL
+  );
   if (startResp.getSelectedButton() !== ui.Button.OK) return;
   var startRow = parseInt(startResp.getResponseText(), 10);
 
-  var endResp = ui.prompt("Custom Comparison Graph", "Enter end row (e.g. 1474):", ui.ButtonSet.OK_CANCEL);
+  // End Row Prompt
+  var endResp = ui.prompt(
+    "Custom Comparison Graph — Step 3/3",
+    "Enter END row (e.g. " + defaultEnd + "):",
+    ui.ButtonSet.OK_CANCEL
+  );
   if (endResp.getSelectedButton() !== ui.Button.OK) return;
   var endRow = parseInt(endResp.getResponseText(), 10);
 
   if (isNaN(startRow) || isNaN(endRow) || startRow < 2 || endRow < startRow) {
-    ui.alert("⚠️ Invalid row numbers entered. Please enter valid positive numbers (start <= end).");
+    ui.alert("⚠️ Invalid row numbers entered. Start must be >= 2 and End must be >= Start.");
     return;
   }
 
-  var res = createComparisonChartForRange(startRow, endRow);
-  ui.alert("✅ Comparison Chart Created for rows " + startRow + " to " + endRow + "!");
+  var res = createComparisonChartForRange(startRow, endRow, targetSheetName);
+  ui.alert("✅ Comparison Chart Created for '" + targetSheetName + "' rows " + startRow + " to " + endRow + "!");
 }
 
 /**
- * Core Chart Engine: Generates both embedded chart & dedicated evaluation tab
+ * Menu Action: Instantly plot whatever row range the user has selected with their mouse
  */
-function createComparisonChartForRange(startRow, endRow) {
+function plotActiveSheetSelection() {
+  var ui = SpreadsheetApp.getUi();
   var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var sheet = ss.getSheetByName("WaterLevel_Synchronized_Logs");
-  if (!sheet) {
-    if (SpreadsheetApp.getUi) {
-      try { SpreadsheetApp.getUi().alert("Sheet 'WaterLevel_Synchronized_Logs' not found!"); } catch(e) {}
-    }
-    return { status: "error", message: "Sheet 'WaterLevel_Synchronized_Logs' not found" };
+  var activeSheet = ss.getActiveSheet();
+  var range = activeSheet.getActiveRange();
+
+  if (!range) {
+    ui.alert("⚠️ Please select a range of rows with your mouse first, or use the Custom Analysis Dialog.");
+    return;
   }
 
-  startRow = startRow || 2283;
-  endRow = endRow || 2654;
+  var startRow = Math.max(2, range.getRow());
+  var endRow = range.getLastRow();
+  if (endRow < startRow) {
+    ui.alert("⚠️ Selection must include at least one data row (Row 2 or higher).");
+    return;
+  }
 
+  var res = createComparisonChartForRange(startRow, endRow, activeSheet.getName());
+  ui.alert("✅ Comparison Chart Created for '" + activeSheet.getName() + "' (Selected Rows " + startRow + " to " + endRow + ")!");
+}
+
+/**
+ * Menu Action: Sleek HTML Dialog for Sheet & Row Range Selection
+ */
+function showCustomWaterLevelAnalysisDialog() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheets = ss.getSheets();
+  var sheetOptions = "";
+  var activeName = ss.getActiveSheet().getName();
+
+  for (var i = 0; i < sheets.length; i++) {
+    var sName = sheets[i].getName();
+    var isSelected = (sName === activeName) ? "selected" : "";
+    sheetOptions += "<option value='" + sName + "' data-rows='" + sheets[i].getLastRow() + "' " + isSelected + ">" + sName + " (" + sheets[i].getLastRow() + " rows)</option>";
+  }
+
+  var htmlContent = "<!DOCTYPE html><html><head><base target='_top'>" +
+    "<link href='https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700&family=JetBrains+Mono:wght@400;600&display=swap' rel='stylesheet'>" +
+    "<style>" +
+    "body { font-family: 'Outfit', sans-serif; background: #0b1120; color: #f8fafc; padding: 20px; margin: 0; }" +
+    ".card { background: rgba(30, 41, 59, 0.7); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; padding: 18px; box-shadow: 0 10px 25px rgba(0,0,0,0.5); }" +
+    "h2 { margin-top: 0; font-size: 1.15rem; color: #38bdf8; display: flex; align-items: center; gap: 8px; }" +
+    "label { font-size: 0.8rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em; display: block; margin-bottom: 6px; font-weight: 600; }" +
+    "select, input[type='number'] { width: 100%; box-sizing: border-box; background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.15); border-radius: 8px; color: #ffffff; padding: 8px 12px; font-family: 'JetBrains Mono', monospace; font-size: 0.9rem; margin-bottom: 14px; }" +
+    "select:focus, input:focus { outline: none; border-color: #38bdf8; }" +
+    ".row-grid { display: flex; gap: 12px; }" +
+    ".btn { padding: 9px 15px; border-radius: 8px; font-weight: 600; font-size: 0.82rem; cursor: pointer; border: none; transition: 0.2s; width: 100%; margin-top: 6px; display: flex; align-items: center; justify-content: center; gap: 6px; }" +
+    ".btn-primary { background: linear-gradient(135deg, #0284c7, #0ea5e9); color: white; }" +
+    ".btn-success { background: linear-gradient(135deg, #059669, #10b981); color: white; }" +
+    ".btn-purple { background: linear-gradient(135deg, #7e22ce, #a855f7); color: white; }" +
+    ".btn:hover { opacity: 0.9; transform: translateY(-1px); }" +
+    ".status { font-size: 0.8rem; color: #38bdf8; text-align: center; margin-top: 10px; min-height: 18px; font-family:'JetBrains Mono'; }" +
+    "</style></head><body>" +
+    "<div class='card'>" +
+    "<h2>📊 Water Level Analysis Selection</h2>" +
+    "<label>Target Sheet</label>" +
+    "<select id='sheetSelect' onchange='updateRowHints()'>" + sheetOptions + "</select>" +
+    "<div class='row-grid'>" +
+    "  <div style='flex:1;'><label>Start Row</label><input type='number' id='startRow' value='2' min='2'></div>" +
+    "  <div style='flex:1;'><label>End Row</label><input type='number' id='endRow' value='2654'></div>" +
+    "</div>" +
+    "<button class='btn btn-primary' onclick='runAction(\"plot\")'>📈 Plot Comparison Graph</button>" +
+    "<button class='btn btn-success' onclick='runAction(\"recal\")'>🎯 Recalculate Ground Truth (11.0 cm)</button>" +
+    "<button class='btn btn-purple' onclick='runAction(\"both\")'>🚀 Run Both (Recalibrate & Plot)</button>" +
+    "<div id='status' class='status'></div>" +
+    "</div>" +
+    "<script>" +
+    "function updateRowHints() {" +
+    "  var sel = document.getElementById('sheetSelect');" +
+    "  var maxRows = parseInt(sel.options[sel.selectedIndex].getAttribute('data-rows') || '1000', 10);" +
+    "  document.getElementById('endRow').value = Math.max(2, maxRows);" +
+    "}" +
+    "function runAction(act) {" +
+    "  var sheetName = document.getElementById('sheetSelect').value;" +
+    "  var start = parseInt(document.getElementById('startRow').value, 10);" +
+    "  var end = parseInt(document.getElementById('endRow').value, 10);" +
+    "  if (isNaN(start) || isNaN(end) || start < 2 || end < start) { alert('Invalid row numbers'); return; }" +
+    "  document.getElementById('status').innerText = 'Processing... Please wait...';" +
+    "  google.script.run" +
+    "    .withSuccessHandler(function(res) {" +
+    "       document.getElementById('status').innerText = 'Success! Closing...';" +
+    "       setTimeout(function(){ google.script.host.close(); }, 1200);" +
+    "     })" +
+    "    .withFailureHandler(function(err) {" +
+    "       document.getElementById('status').innerText = 'Error: ' + err.message;" +
+    "     })" +
+    "    .executeCustomAnalysisFromDialog(sheetName, start, end, act);" +
+    "}" +
+    "updateRowHints();" +
+    "</script>" +
+    "</body></html>";
+
+  var output = HtmlService.createHtmlOutput(htmlContent)
+    .setWidth(440)
+    .setHeight(430)
+    .setTitle("Water Level Analysis Configuration");
+  SpreadsheetApp.getUi().showModalDialog(output, "📊 Water Level Analysis");
+}
+
+/**
+ * Backend Dispatcher for the Custom HTML Modal Dialog
+ */
+function executeCustomAnalysisFromDialog(sheetName, startRow, endRow, action) {
+  if (action === "plot") {
+    return createComparisonChartForRange(startRow, endRow, sheetName);
+  } else if (action === "recal") {
+    return recalculateUltrasonicGroundTruth(startRow, endRow, 11.0, 122.0, sheetName);
+  } else if (action === "both") {
+    recalculateUltrasonicGroundTruth(startRow, endRow, 11.0, 122.0, sheetName);
+    return createComparisonChartForRange(startRow, endRow, sheetName);
+  }
+}
+
+/**
+ * Core Chart Engine: Generates both embedded chart & dedicated evaluation tab for ANY selected sheet
+ */
+function createComparisonChartForRange(startRow, endRow, targetSheetName) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  targetSheetName = targetSheetName || "WaterLevel_Synchronized_Logs";
+  var sheet = ss.getSheetByName(targetSheetName);
+  if (!sheet) {
+    sheet = ss.getActiveSheet();
+  }
+
+  startRow = startRow || 2;
   var lastRow = sheet.getLastRow();
+  endRow = endRow || lastRow;
+
   if (lastRow < 2) {
-    var msg = "Sheet contains no logged data to plot.";
+    var msg = "Sheet '" + sheet.getName() + "' contains no logged data to plot.";
     try { SpreadsheetApp.getUi().alert(msg); } catch(e) {}
     return { status: "error", message: msg };
   }
@@ -677,10 +831,29 @@ function createComparisonChartForRange(startRow, endRow) {
   var effectiveStartRow = Math.min(startRow, effectiveEndRow);
   var numRows = effectiveEndRow - effectiveStartRow + 1;
 
+  // Dynamically detect column indexes based on header row names
+  var headerVals = sheet.getRange(1, 1, 1, Math.max(1, sheet.getLastColumn())).getValues()[0];
+  var timeCol = 1;
+  var pressureCol = 4;
+  var ultrasonicCol = 8;
+
+  for (var c = 0; c < headerVals.length; c++) {
+    var h = String(headerVals[c]).toLowerCase();
+    if (h.indexOf("time") !== -1 || h.indexOf("elapsed") !== -1) {
+      if (timeCol === 1) timeCol = c + 1;
+    }
+    if (h.indexOf("pressure est") !== -1 || (h.indexOf("pressure") !== -1 && h.indexOf("level") !== -1)) {
+      pressureCol = c + 1;
+    }
+    if (h.indexOf("ground truth") !== -1 || (h.indexOf("ultrasonic") !== -1 && (h.indexOf("level") !== -1 || h.indexOf("%") !== -1))) {
+      ultrasonicCol = c + 1;
+    }
+  }
+
   // 1. Create or refresh dedicated analysis tab (clean table + formulas + statistical summary)
   createOrUpdateAnalysisTab(sheet, effectiveStartRow, effectiveEndRow);
 
-  // 2. Remove existing duplicate chart on main sheet if present
+  // 2. Remove existing duplicate chart on target sheet if present
   var existingCharts = sheet.getCharts();
   for (var i = 0; i < existingCharts.length; i++) {
     var c = existingCharts[i];
@@ -690,24 +863,21 @@ function createComparisonChartForRange(startRow, endRow) {
     }
   }
 
-  // 3. Build Embedded Line Chart on main sheet:
-  // Col A (1): Timestamp Slot (1-Min)
-  // Col D (4): Pressure Est. Level (%)
-  // Col H (8): Ultrasonic Ground Truth (%)
-  var timeRange = sheet.getRange(effectiveStartRow, 1, numRows, 1);
-  var pressureRange = sheet.getRange(effectiveStartRow, 4, numRows, 1);
-  var ultrasonicRange = sheet.getRange(effectiveStartRow, 8, numRows, 1);
+  // 3. Build Embedded Line Chart on target sheet
+  var timeRange = sheet.getRange(effectiveStartRow, timeCol, numRows, 1);
+  var pressureRange = sheet.getRange(effectiveStartRow, pressureCol, numRows, 1);
+  var ultrasonicRange = sheet.getRange(effectiveStartRow, ultrasonicCol, numRows, 1);
 
   var chart = sheet.newChart()
     .asLineChart()
     .addRange(timeRange)
     .addRange(pressureRange)
     .addRange(ultrasonicRange)
-    .setPosition(2, 16, 15, 15) // Positioned at Row 2, Column P (to the right of data)
-    .setOption('title', 'Water Level Prediction vs Ultrasonic Ground Truth (Rows ' + effectiveStartRow + ' to ' + effectiveEndRow + ')')
+    .setPosition(2, Math.max(15, sheet.getLastColumn() + 2), 15, 15)
+    .setOption('title', 'Water Level Prediction vs Ultrasonic Ground Truth [' + sheet.getName() + ' Rows ' + effectiveStartRow + ' to ' + effectiveEndRow + ']')
     .setOption('titleTextStyle', { fontSize: 15, bold: true, color: '#0F172A' })
     .setOption('hAxis', {
-      title: 'Timestamp Slot (1-Min Intervals)',
+      title: 'Time / Samples',
       slantedText: true,
       slantedTextAngle: 45
     })
@@ -731,10 +901,11 @@ function createComparisonChartForRange(startRow, endRow) {
 
   return {
     status: "success",
+    sheet: sheet.getName(),
     startRow: effectiveStartRow,
     endRow: effectiveEndRow,
     analysisTab: "Comparison_" + effectiveStartRow + "_" + effectiveEndRow,
-    message: "Plotted Rows " + effectiveStartRow + " to " + effectiveEndRow + " on Column P & generated dedicated tab 'Comparison_" + effectiveStartRow + "_" + effectiveEndRow + "'!"
+    message: "Plotted Rows " + effectiveStartRow + " to " + effectiveEndRow + " on sheet '" + sheet.getName() + "'!"
   };
 }
 
@@ -863,14 +1034,12 @@ function createOrUpdateAnalysisTab(mainSheet, startRow, endRow) {
 /**
  * Recalculates Ultrasonic Ground Truth (%) using 11.0 cm as tank full baseline
  */
-function recalculateUltrasonicGroundTruth(startRow, endRow, fullTankOffsetCm, tankDepthCm) {
+function recalculateUltrasonicGroundTruth(startRow, endRow, fullTankOffsetCm, tankDepthCm, targetSheetName) {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var sheet = ss.getSheetByName("WaterLevel_Synchronized_Logs");
+  targetSheetName = targetSheetName || "WaterLevel_Synchronized_Logs";
+  var sheet = ss.getSheetByName(targetSheetName);
   if (!sheet) {
-    if (SpreadsheetApp.getUi) {
-      try { SpreadsheetApp.getUi().alert("Sheet 'WaterLevel_Synchronized_Logs' not found!"); } catch(e) {}
-    }
-    return { status: "error", message: "Sheet not found" };
+    sheet = ss.getActiveSheet();
   }
 
   var fullOffset = (fullTankOffsetCm !== undefined && fullTankOffsetCm !== null) ? parseFloat(fullTankOffsetCm) : 11.0;

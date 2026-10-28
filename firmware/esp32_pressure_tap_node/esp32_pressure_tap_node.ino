@@ -351,6 +351,20 @@ void onMqttMessageReceived(char* topic, byte* payload, unsigned int length) {
     delay(500);
     ESP.restart();
   }
+  else if (cmd == "reboot_node2") {
+    Serial.println(F("[MQTT-CMD] 🔄 Forwarding reboot command to Node 2 (Overhead Ultrasonic)..."));
+    HTTPClient httpNode2;
+    WiFiClient clientNode2;
+    httpNode2.begin(clientNode2, "http://192.168.29.130/api/reboot");
+    httpNode2.setTimeout(2500);
+    int code = httpNode2.GET();
+    httpNode2.end();
+    if (code > 0) {
+      publishMqttStatus("Node 2 (Overhead Ultrasonic) Rebooting...");
+    } else {
+      publishMqttStatus("Node 2 Unreachable (Offline or No Route)");
+    }
+  }
 }
 
 // Publish 5 Hz Real-Time Telemetry to Global MQTT Broker
@@ -1067,6 +1081,8 @@ void handleStatusApi() {
   json += "\"offline_queue\":" + String(getOfflineQueueCount()) + ",";
   json += "\"wifi_connected\":" + String((WiFi.status() == WL_CONNECTED) ? "true" : "false") + ",";
   json += "\"adc_mode\":\"" + String(usingExternalAdc ? "ADS1115 (16-bit)" : "ESP32 Internal (12-bit)") + "\",";
+  json += "\"rooftop_level\":" + String(eventRecorder.getRooftopLevel(), 1) + ",";
+  json += "\"rooftop_dist\":" + String(eventRecorder.getRooftopDist(), 1) + ",";
   json += "\"ota_status\":\"" + cloudOTA.getStatus() + "\",";
   json += "\"firmware_version\":\"" + String(FIRMWARE_VERSION) + "\"";
   json += "}";
