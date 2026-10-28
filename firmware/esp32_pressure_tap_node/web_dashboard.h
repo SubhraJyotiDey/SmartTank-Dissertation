@@ -484,6 +484,9 @@ const char DASHBOARD_HTML[] PROGMEM = R"rawliteral(
           <span class="dot"></span>
           <span id="stateText">STATIC BASELINE</span>
         </div>
+        <div id="otaBadge" class="badge" style="background: rgba(168,85,247,0.15); border-color: rgba(168,85,247,0.3); color: #c084fc; font-weight: 600;">
+          OTA: <span id="otaModeText" style="margin-left:4px;">Auto 15m (v1.1.0)</span>
+        </div>
         <div class="badge" style="background: rgba(255,255,255,0.06); border-color: rgba(255,255,255,0.1); color: var(--text-muted);">
           NTP: <span id="clockTime" style="color:#fff; margin-left:4px;">--:--:--</span>
         </div>
@@ -637,6 +640,39 @@ const char DASHBOARD_HTML[] PROGMEM = R"rawliteral(
           </div>
         </div>
       </div>
+
+      <!-- Cloud OTA Auto-Updater (Every 15 Minutes) -->
+      <div class="card" style="grid-column: span 2;">
+        <div class="card-title">
+          <span>Cloud Over-The-Air (OTA) Self-Updater</span>
+          <span style="font-size:0.8rem; color:#c084fc; font-weight:600;">Active (Every 15 min)</span>
+        </div>
+        <p class="note-text" style="margin-bottom: 1rem;">
+          Autonomously checks the GitHub repository every 15 minutes for newly compiled firmware binaries, downloads updates, and flashes itself safely via dual-partition OTA.
+        </p>
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; align-items: center; margin-bottom: 1rem;">
+          <div>
+            <label>Current Firmware</label>
+            <div style="font-family:'JetBrains Mono'; color:#38bdf8; font-size:1.1rem; font-weight:600;" id="firmwareVerText">v1.1.0</div>
+          </div>
+          <div>
+            <label>Auto-Check Interval</label>
+            <div style="font-family:'JetBrains Mono'; color:#f8fafc; font-size:1.1rem;">Every 15 Minutes</div>
+          </div>
+          <div>
+            <label>Cloud OTA Status</label>
+            <div style="font-family:'JetBrains Mono'; color:#10b981; font-size:0.95rem;" id="otaStatusDetail">Up to date</div>
+          </div>
+        </div>
+        <div style="display: flex; gap: 0.75rem; flex-wrap: wrap;">
+          <input type="password" id="inputGhToken" placeholder="Optional GitHub Token (PAT) for private repo" style="flex: 2; min-width: 250px;">
+          <button class="btn btn-secondary" onclick="saveGithubToken()">Save Token</button>
+          <button class="btn btn-primary" onclick="triggerOtaCheckNow()">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+            Check Updates Now
+          </button>
+        </div>
+      </div>
     </div>
 
     <!-- 24-Hour Experiment Controls -->
@@ -747,6 +783,13 @@ const char DASHBOARD_HTML[] PROGMEM = R"rawliteral(
         // Update Metrics
         if (d.adc_mode) {
           document.getElementById('adcModeText').innerText = d.adc_mode;
+        }
+        if (d.ota_status) {
+          document.getElementById('otaStatusDetail').innerText = d.ota_status;
+          document.getElementById('otaModeText').innerText = d.ota_status;
+        }
+        if (d.firmware_version) {
+          document.getElementById('firmwareVerText').innerText = 'v' + d.firmware_version;
         }
         document.getElementById('gaugePressure').innerText = d.pressure_kpa.toFixed(2);
         document.getElementById('headM').innerText = d.head_m.toFixed(2);
@@ -898,6 +941,34 @@ const char DASHBOARD_HTML[] PROGMEM = R"rawliteral(
         showToast("Google Sheet reset command sent successfully!");
       } catch (e) {
         showToast("Error clearing sheet");
+      }
+    }
+
+    async function triggerOtaCheckNow() {
+      showToast("Contacting GitHub for new firmware update...");
+      try {
+        const res = await fetch('/api/ota_check', { method: 'POST' });
+        const d = await res.json();
+        showToast(d.message || "OTA check completed");
+        fetchStatus();
+      } catch(e) {
+        showToast("Error checking updates: " + e.message);
+      }
+    }
+
+    async function saveGithubToken() {
+      const token = document.getElementById('inputGhToken').value.trim();
+      const formData = new FormData();
+      formData.append('gh_token', token);
+      try {
+        const res = await fetch('/api/settings', { method: 'POST', body: formData });
+        if (res.ok) {
+          showToast("GitHub Token saved to ESP32 Flash!");
+        } else {
+          showToast("Error saving token");
+        }
+      } catch(e) {
+        showToast("Error saving token: " + e.message);
       }
     }
 

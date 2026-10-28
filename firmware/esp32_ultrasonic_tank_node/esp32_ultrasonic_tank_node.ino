@@ -24,6 +24,10 @@
 #include <time.h>
 #include <ArduinoOTA.h>
 #include "config.h"
+#include "cloud_ota_updater.h"
+
+// Automatic Cloud OTA Self-Updater (every 15 minutes)
+CloudOTAUpdater cloudOTA(FIRMWARE_VERSION, OTA_BIN_FILENAME, DEFAULT_GITHUB_OTA_TOKEN);
 
 // =========================================================================
 // GLOBAL VARIABLES
@@ -95,6 +99,9 @@ void setup() {
 void loop() {
   // Handle Over-The-Air Remote Code Upload requests
   ArduinoOTA.handle();
+
+  // Handle Automatic Cloud OTA updates (checks every 15 minutes)
+  cloudOTA.handleLoop();
 
   // Continuous auto-reconnect and offline backlog drainer
   maintainWiFi();

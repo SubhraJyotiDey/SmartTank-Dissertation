@@ -12,6 +12,8 @@ jobs:
   build:
     name: Build Node Binaries
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
 
     steps:
       - name: Checkout Repository
@@ -47,3 +49,20 @@ jobs:
             pressure_node_firmware.bin
             ultrasonic_node_firmware.bin
           retention-days: 14
+
+      - name: Publish or Update Latest GitHub Release for Auto-OTA
+        uses: softprops/action-gh-release@v2
+        if: github.ref == 'refs/heads/main'
+        with:
+          tag_name: latest
+          name: Latest Automated Firmware Build
+          body: |
+            Automated Over-The-Air (OTA) build triggered by commit ${{ github.sha }}.
+            Contains compiled binary images polled every 15 minutes by both ESP32 nodes.
+          files: |
+            pressure_node_firmware.bin
+            ultrasonic_node_firmware.bin
+            firmware/version.json
+          make_latest: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

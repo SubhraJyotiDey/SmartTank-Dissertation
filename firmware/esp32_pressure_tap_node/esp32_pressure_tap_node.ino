@@ -29,10 +29,14 @@
 #include "config.h"
 #include "ads1115_driver.h"
 #include "web_dashboard.h"
+#include "cloud_ota_updater.h"
 
 // External ADS1115 16-Bit Precision ADC Object
 ADS1115_Lite ads(ADS1115_I2C_ADDR);
 bool usingExternalAdc = false;
+
+// Automatic Cloud OTA Self-Updater (every 15 minutes)
+CloudOTAUpdater cloudOTA(FIRMWARE_VERSION, OTA_BIN_FILENAME, DEFAULT_GITHUB_OTA_TOKEN);
 
 // =========================================================================
 // ENUMS & STATE STRUCTURES
@@ -118,6 +122,7 @@ void handleStatusApi();
 void handleCalibrateApi();
 void handleSettingsApi();
 void handleManualLogApi();
+void handleOtaCheckApi();
 
 // =========================================================================
 // SETUP
@@ -180,6 +185,7 @@ void setup() {
   server.on("/api/calibrate", HTTP_POST, handleCalibrateApi);
   server.on("/api/settings", HTTP_POST, handleSettingsApi);
   server.on("/api/log_sheets", HTTP_POST, handleManualLogApi);
+  server.on("/api/ota_check", HTTP_POST, handleOtaCheckApi);
   server.begin();
   Serial.println(F("[HTTP] Embedded Web Server started on port 80"));
 
@@ -235,6 +241,9 @@ void publishMqttTelemetry() {
 void loop() {
   // Handle Over-The-Air Remote Code Upload requests
   ArduinoOTA.handle();
+
+  // Handle Automatic Cloud OTA updates (checks every 15 minutes)
+  cloudOTA.handleLoop();
 
   // Continuous auto-reconnect and offline backlog drainer
   maintainWiFi();
@@ -773,6 +782,8 @@ void loadSettings() {
   }
   tankCapacityL   = preferences.getFloat("tank_cap", DEFAULT_TANK_CAPACITY_L);
   googleScriptUrl = preferences.getString("script_url", GOOGLE_SCRIPT_URL);
+  String savedToken = preferences.getString("gh_token", DEFAULT_GITHUB_OTA_TOKEN);
+  cloudOTA.setToken(savedToken);
   preferences.end();
 
   Serial.println(F("[NVS] Configuration loaded from Flash:"));
@@ -951,7 +962,9 @@ void handleStatusApi() {
   json += "\"next_log_slot\":\"" + getNextLogSlotString() + "\",";
   json += "\"offline_queue\":" + String(getOfflineQueueCount()) + ",";
   json += "\"wifi_connected\":" + String((WiFi.status() == WL_CONNECTED) ? "true" : "false") + ",";
-  json += "\"adc_mode\":\"" + String(usingExternalAdc ? "ADS1115 (16-bit)" : "ESP32 Internal (12-bit)") + "\"";
+  json += "\"adc_mode\":\"" + String(usingExternalAdc ? "ADS1115 (16-bit)" : "ESP32 Internal (12-bit)") + "\",";
+  json += "\"ota_status\":\"" + cloudOTA.getStatus() + "\",";
+  json += "\"firmware_version\":\"" + String(FIRMWARE_VERSION) + "\"";
   json += "}";
 
   server.send(200, "application/json", json);
@@ -1001,6 +1014,15 @@ void handleSettingsApi() {
   if (server.hasArg("script_url") && server.arg("script_url").length() > 5) {
     googleScriptUrl = server.arg("script_url");
   }
+  if (server.hasArg("gh_token")) {
+    String tokenVal = server.arg("gh_token");
+    tokenVal.trim();
+    preferences.begin("smart_tank", false);
+    preferences.putString("gh_token", tokenVal);
+    preferences.end();
+    cloudOTA.setToken(tokenVal);
+    Serial.println(F("[NVS] Updated GitHub OTA Token saved to flash."));
+  }
 
   saveSettings();
   server.send(200, "application/json", "{\"status\":\"success\",\"message\":\"Settings updated successfully!\"}");
@@ -1019,4 +1041,11 @@ void handleManualLogApi() {
   } else {
     server.send(500, "application/json", "{\"status\":\"error\",\"message\":\"Failed to send data to Google Sheets\"}");
   }
+}
+
+void handleOtaCheckApi() {
+  Serial.println(F("[WEB] Manual Cloud OTA check triggered via Web Dashboard"));
+  bool updated = cloudOTA.checkAndUpdate(true);
+  String json = "{\"status\":\"success\",\"message\":\"" + cloudOTA.getStatus() + "\"}";
+  server.send(200, "application/json", json);
 }

@@ -48,5 +48,21 @@
 #define NTP_SERVER              "pool.ntp.org"
 #define GMT_OFFSET_SEC          19800   // IST (India Standard Time) UTC+5:30 -> 19800 sec
 #define DAYLIGHT_OFFSET_SEC     0
+// =========================================================================
+// 5. AUTOMATIC CLOUD OVER-THE-AIR (OTA) SELF-UPDATE (EVERY 15 MINUTES)
+// =========================================================================
+#define FIRMWARE_VERSION            "1.1.0"
+#define AUTO_OTA_ENABLED            true
+#define OTA_CHECK_INTERVAL_MIN      15      // Check for new updates every 15 minutes
+#define OTA_NODE_NAME               "ultrasonic_node"
+#define OTA_BIN_FILENAME            "ultrasonic_node_firmware.bin"
+
+// GitHub Cloud Repository for Automatic Firmware Releases:
+#define GITHUB_OWNER                "SubhraJyotiDey"
+#define GITHUB_REPO                 "SmartTank-Dissertation"
+#define GITHUB_RELEASE_TAG          "latest"
+
+// Optional GitHub Personal Access Token (PAT) for private repo access:
+#define DEFAULT_GITHUB_OTA_TOKEN    ""
 
 #endif // CONFIG_H

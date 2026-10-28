@@ -120,5 +120,22 @@
 #define MQTT_PORT               1883
 // Unique topic for your tank setup
 #define MQTT_TOPIC_TELEMETRY    "smarttank/dissertation/tap/live"
+// =========================================================================
+// 8. AUTOMATIC CLOUD OVER-THE-AIR (OTA) SELF-UPDATE (EVERY 15 MINUTES)
+// =========================================================================
+#define FIRMWARE_VERSION            "1.1.0"
+#define AUTO_OTA_ENABLED            true
+#define OTA_CHECK_INTERVAL_MIN      15      // Check for new updates every 15 minutes
+#define OTA_NODE_NAME               "pressure_node"
+#define OTA_BIN_FILENAME            "pressure_node_firmware.bin"
+
+// GitHub Cloud Repository for Automatic Firmware Releases:
+#define GITHUB_OWNER                "SubhraJyotiDey"
+#define GITHUB_REPO                 "SmartTank-Dissertation"
+#define GITHUB_RELEASE_TAG          "latest"
+
+// Optional GitHub Personal Access Token (PAT) for private repo access.
+// If empty, public release URLs are queried. Can also be set in Web Dashboard.
+#define DEFAULT_GITHUB_OTA_TOKEN    ""
 
 #endif // CONFIG_H

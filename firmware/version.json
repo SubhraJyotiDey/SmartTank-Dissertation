@@ -1,0 +1,14 @@
+{
+  "firmware_version": "1.1.0",
+  "published_at": "2026-10-28T07:45:00Z",
+  "pressure_node": {
+    "version": "1.1.0",
+    "filename": "pressure_node_firmware.bin",
+    "description": "Pressure Tap Node with ADS1115 direct 5V, 122cm depth, and 15-minute Auto-OTA updater."
+  },
+  "ultrasonic_node": {
+    "version": "1.1.0",
+    "filename": "ultrasonic_node_firmware.bin",
+    "description": "Ultrasonic Node with 11cm full offset, 122cm depth, and 15-minute Auto-OTA updater."
+  }
+}
