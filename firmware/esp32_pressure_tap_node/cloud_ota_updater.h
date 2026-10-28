@@ -246,7 +246,10 @@ public:
 
                 int code = httpRedirect.GET();
                 if (code == HTTP_CODE_FOUND || code == HTTP_CODE_MOVED_PERMANENTLY || code == 307 || code == 308) {
-                    String redirectedLocation = httpRedirect.header("Location");
+                    String redirectedLocation = httpRedirect.getLocation();
+                    if (redirectedLocation.length() < 10) {
+                        redirectedLocation = httpRedirect.header("Location");
+                    }
                     if (redirectedLocation.length() > 10) {
                         finalDownloadUrl = redirectedLocation;
                         Serial.println(F("[AUTO-OTA] ✅ Resolved GitHub 302 redirect to storage endpoint!"));
@@ -255,6 +258,7 @@ public:
                 httpRedirect.end();
             }
             redirectClient.stop();
+            delay(150); // Allow TLS heap buffers to cleanly deallocate before opening download stream
         }
 
         // Step 2: Download stream from storage endpoint

@@ -1011,7 +1011,7 @@ void handleManualLogApi() {
 
 void handleOtaCheckApi() {
   Serial.println(F("[WEB] Manual Cloud OTA check triggered via Web Dashboard"));
-  cloudOTA.checkAndUpdate(true);
+  cloudOTA.checkAndUpdate(false);
   String json = "{\"status\":\"success\",\"message\":\"" + cloudOTA.getStatus() + "\"}";
   server.send(200, "application/json", json);
 }
