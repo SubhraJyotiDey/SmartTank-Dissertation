@@ -123,7 +123,7 @@
 // =========================================================================
 // 8. AUTOMATIC CLOUD OVER-THE-AIR (OTA) SELF-UPDATE (EVERY 15 MINUTES)
 // =========================================================================
-#define FIRMWARE_VERSION            "1.1.0"
+#define FIRMWARE_VERSION            "1.2.0"
 #define AUTO_OTA_ENABLED            true
 #define OTA_CHECK_INTERVAL_MIN      15      // Check for new updates every 15 minutes
 #define OTA_NODE_NAME               "pressure_node"

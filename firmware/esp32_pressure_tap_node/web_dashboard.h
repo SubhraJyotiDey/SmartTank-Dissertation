@@ -677,27 +677,80 @@ const char DASHBOARD_HTML[] PROGMEM = R"rawliteral(
 
     <!-- 24-Hour Experiment Controls -->
     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 1.5rem;">
-      <!-- Mark Manual Test Event -->
-      <div class="card">
+      <!-- High-Resolution Dual-Sensor Event Recorder (Sheet 2) -->
+      <div class="card" style="border: 1px solid rgba(239, 68, 68, 0.4); box-shadow: 0 0 25px rgba(239, 68, 68, 0.1);">
         <div class="card-title">
-          <span>Mark Manual Test Event</span>
+          <div style="display: flex; align-items: center; gap: 0.5rem;">
+            <span id="recDot" style="width: 10px; height: 10px; border-radius: 50%; background: #ef4444; display: inline-block;"></span>
+            <span>High-Resolution Event Capture (10 Hz)</span>
+          </div>
+          <span style="font-size: 0.72rem; color: #f43f5e; font-weight: 700; background: rgba(244,63,94,0.15); padding: 3px 8px; border-radius: 6px;">SHEET 2 ONLY</span>
         </div>
-        <p class="note-text" style="margin-bottom: 1rem;">
-          Give your test a name and duration. All rows logged in Sheets during this time will be tagged and highlighted in purple!
+        <p class="note-text" style="margin-bottom: 0.75rem;">
+          Captures transient dynamics for <strong>both sensors</strong> simultaneously at <strong>10 Hz (100 ms)</strong> into ESP32 Flash, then streams in chunks to <strong>Sheet 2 ('HighRes_Event_Logs')</strong> with unique event color-coding.
         </p>
-        <div style="display: flex; gap: 0.75rem; margin-bottom: 0.75rem;">
+
+        <div style="display: flex; gap: 0.75rem; margin-bottom: 0.5rem;">
           <div style="flex: 2;">
-            <label>Test Name</label>
-            <input type="text" id="manualTestName" placeholder="e.g., Kitchen Tap 50% flow">
+            <label>Event Name</label>
+            <input type="text" id="highResEventName" placeholder="e.g., Full Tap Turn 100%, Shower Pulse">
           </div>
           <div style="flex: 1;">
-            <label>Duration (Min)</label>
-            <input type="number" id="manualTestDuration" value="5" min="1" max="60">
+            <label>Duration (Sec)</label>
+            <input type="number" id="highResDurationSec" value="30" min="5" max="600">
           </div>
         </div>
+
+        <!-- Duration Preset Pills -->
+        <div style="display: flex; gap: 0.4rem; margin-bottom: 0.75rem; flex-wrap: wrap;">
+          <button class="btn btn-secondary" style="padding: 0.25rem 0.55rem; font-size: 0.75rem;" onclick="setEventDuration(15)">15s</button>
+          <button class="btn btn-secondary" style="padding: 0.25rem 0.55rem; font-size: 0.75rem;" onclick="setEventDuration(30)">30s</button>
+          <button class="btn btn-secondary" style="padding: 0.25rem 0.55rem; font-size: 0.75rem;" onclick="setEventDuration(60)">1 min</button>
+          <button class="btn btn-secondary" style="padding: 0.25rem 0.55rem; font-size: 0.75rem;" onclick="setEventDuration(120)">2 min</button>
+          <button class="btn btn-secondary" style="padding: 0.25rem 0.55rem; font-size: 0.75rem;" onclick="setEventDuration(300)">5 min</button>
+        </div>
+
+        <!-- Live Event Recording Monitor Box -->
+        <div id="eventLiveBox" style="background: rgba(0,0,0,0.35); border: 1px solid var(--card-border); border-radius: 12px; padding: 0.75rem; margin-bottom: 0.75rem;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.4rem;">
+            <span style="font-size: 0.78rem; color: var(--text-muted);">Event Engine:</span>
+            <strong id="eventLiveStatus" style="font-size: 0.82rem; color: #10b981;">Ready to Record</strong>
+          </div>
+          <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.4rem; text-align: center;">
+            <div style="background: rgba(255,255,255,0.04); padding: 0.4rem; border-radius: 8px;">
+              <div style="font-size: 0.68rem; color: var(--text-muted);">Elapsed / Target</div>
+              <div id="eventElapsedText" style="font-family:'JetBrains Mono'; font-weight:600; color:#38bdf8; font-size:0.88rem;">0.0s / 30s</div>
+            </div>
+            <div style="background: rgba(255,255,255,0.04); padding: 0.4rem; border-radius: 8px;">
+              <div style="font-size: 0.68rem; color: var(--text-muted);">Flash Samples</div>
+              <div id="eventSamplesText" style="font-family:'JetBrains Mono'; font-weight:600; color:#c084fc; font-size:0.88rem;">0 @ 10Hz</div>
+            </div>
+            <div style="background: rgba(255,255,255,0.04); padding: 0.4rem; border-radius: 8px;">
+              <div style="font-size: 0.68rem; color: var(--text-muted);">Rooftop Ultrasound</div>
+              <div id="eventRooftopText" style="font-family:'JetBrains Mono'; font-weight:600; color:#34d399; font-size:0.88rem;">-- cm</div>
+            </div>
+          </div>
+          <!-- Upload Progress Bar (visible during chunk streaming) -->
+          <div id="eventUploadProgressContainer" style="display:none; margin-top: 0.6rem;">
+            <div style="display: flex; justify-content: space-between; font-size: 0.75rem; color: var(--text-muted); margin-bottom: 3px;">
+              <span>Streaming Chunks to Sheet 2...</span>
+              <span id="eventUploadPct">0%</span>
+            </div>
+            <div style="width: 100%; height: 6px; background: rgba(255,255,255,0.1); border-radius: 3px; overflow: hidden;">
+              <div id="eventUploadBar" style="width: 0%; height: 100%; background: linear-gradient(90deg, #38bdf8, #10b981); transition: width 0.3s;"></div>
+            </div>
+          </div>
+        </div>
+
         <div class="btn-group">
-          <button class="btn btn-purple" onclick="triggerManualTest(true)">Start & Tag Test</button>
-          <button class="btn btn-secondary" onclick="triggerManualTest(false)">Stop Tagging</button>
+          <button id="btnStartEvent" class="btn btn-danger" onclick="startHighResEvent()">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="8"/></svg>
+            Record High-Res Event (10 Hz)
+          </button>
+          <button id="btnStopEvent" class="btn btn-secondary" onclick="stopHighResEvent()" style="display:none;">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12"/></svg>
+            Stop & Stream to Sheet 2
+          </button>
         </div>
       </div>
 
@@ -972,6 +1025,112 @@ const char DASHBOARD_HTML[] PROGMEM = R"rawliteral(
       }
     }
 
+    // High-Resolution 10 Hz Event Capture Controller (Sheet 2)
+    let eventColorCounter = 0;
+
+    function setEventDuration(sec) {
+      document.getElementById('highResDurationSec').value = sec;
+      const nameEl = document.getElementById('highResEventName');
+      if (!nameEl.value || nameEl.value.trim() === '') {
+        nameEl.value = 'Tap Turn Test (' + sec + 's)';
+      }
+    }
+
+    async function startHighResEvent() {
+      const name = document.getElementById('highResEventName').value.trim() || 'Tap Transient Event';
+      const durSec = parseFloat(document.getElementById('highResDurationSec').value) || 30;
+
+      const formData = new FormData();
+      formData.append('name', name);
+      formData.append('duration_sec', durSec);
+      formData.append('color_idx', eventColorCounter++);
+
+      showToast('Starting High-Resolution 10 Hz Event Capture...');
+      try {
+        const res = await fetch('/api/event/start', { method: 'POST', body: formData });
+        const data = await res.json();
+        if (res.ok) {
+          showToast('🔴 Recording started: 10 samples/sec into Flash!');
+          document.getElementById('btnStartEvent').style.display = 'none';
+          document.getElementById('btnStopEvent').style.display = 'inline-flex';
+          pollEventStatus();
+        } else {
+          showToast('Error: ' + data.message);
+        }
+      } catch(e) {
+        showToast('Failed to start event: ' + e.message);
+      }
+    }
+
+    async function stopHighResEvent() {
+      showToast('Stopping recording. Streaming chunks to Sheet 2...');
+      try {
+        const res = await fetch('/api/event/stop', { method: 'POST' });
+        const data = await res.json();
+        showToast(data.message || 'Streaming chunks to Sheet 2...');
+        pollEventStatus();
+      } catch(e) {
+        showToast('Error stopping event: ' + e.message);
+      }
+    }
+
+    async function pollEventStatus() {
+      try {
+        const res = await fetch('/api/event/status');
+        if (!res.ok) return;
+        const d = await res.json();
+
+        const statusEl = document.getElementById('eventLiveStatus');
+        const elapsedEl = document.getElementById('eventElapsedText');
+        const samplesEl = document.getElementById('eventSamplesText');
+        const rooftopEl = document.getElementById('eventRooftopText');
+        const progContainer = document.getElementById('eventUploadProgressContainer');
+        const uploadBar = document.getElementById('eventUploadBar');
+        const uploadPct = document.getElementById('eventUploadPct');
+        const recDot = document.getElementById('recDot');
+        const btnStart = document.getElementById('btnStartEvent');
+        const btnStop = document.getElementById('btnStopEvent');
+
+        if (d.recording) {
+          statusEl.innerText = '🔴 RECORDING (10 Hz High-Speed)...';
+          statusEl.style.color = '#ef4444';
+          recDot.style.background = '#ef4444';
+          recDot.style.animation = 'pulseAlert 1s infinite';
+          elapsedEl.innerText = d.elapsed_sec.toFixed(1) + 's / ' + d.duration_sec.toFixed(0) + 's';
+          samplesEl.innerText = d.samples + ' @ 10Hz';
+          rooftopEl.innerText = d.rooftop_dist.toFixed(1) + ' cm (' + d.rooftop_level.toFixed(1) + '%)';
+          progContainer.style.display = 'none';
+          btnStart.style.display = 'none';
+          btnStop.style.display = 'inline-flex';
+          setTimeout(pollEventStatus, 250); // Fast 250ms polling during active recording
+        } else if (d.uploading) {
+          statusEl.innerText = '🚀 STREAMING TO SHEET 2...';
+          statusEl.style.color = '#38bdf8';
+          recDot.style.background = '#38bdf8';
+          recDot.style.animation = 'none';
+          progContainer.style.display = 'block';
+          uploadBar.style.width = d.upload_pct + '%';
+          uploadPct.innerText = d.upload_pct + '%';
+          elapsedEl.innerText = 'Uploaded ' + d.upload_pct + '%';
+          samplesEl.innerText = d.samples + ' samples';
+          btnStart.style.display = 'none';
+          btnStop.style.display = 'none';
+          setTimeout(pollEventStatus, 500); // 500ms polling during chunk streaming
+        } else {
+          statusEl.innerText = d.upload_status || 'Ready to Record';
+          statusEl.style.color = '#10b981';
+          recDot.style.background = '#10b981';
+          recDot.style.animation = 'none';
+          progContainer.style.display = 'none';
+          btnStart.style.display = 'inline-flex';
+          btnStop.style.display = 'none';
+          if (d.rooftop_dist > 0) {
+            rooftopEl.innerText = d.rooftop_dist.toFixed(1) + ' cm (' + d.rooftop_level.toFixed(1) + '%)';
+          }
+        }
+      } catch(e) {}
+    }
+
     function showToast(msg) {
       const t = document.getElementById('toast');
       t.innerText = msg;
@@ -983,6 +1142,7 @@ const char DASHBOARD_HTML[] PROGMEM = R"rawliteral(
       initChart();
       fetchStatus();
       setInterval(fetchStatus, 1000); // Poll telemetry every 1 sec
+      pollEventStatus();
     };
   </script>
 </body>

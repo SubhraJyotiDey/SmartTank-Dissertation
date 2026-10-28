@@ -7,3 +7,4 @@ build/
 *.csv
 scratch/
 .system_generated/
+firmware/binaries/

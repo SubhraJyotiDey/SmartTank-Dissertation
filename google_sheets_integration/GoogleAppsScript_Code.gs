@@ -23,9 +23,9 @@ function onOpen() {
   try {
     var ui = SpreadsheetApp.getUi();
     ui.createMenu('📊 Water Level Analysis')
-      .addItem('📈 Plot Comparison Graph (Rows 1138 - 1474)', 'createComparisonChart1138_1474')
-      .addItem('🎯 Recalculate Ground Truth (11.0 cm = Full Tank)', 'recalculateUltrasonicGroundTruth1138_1474')
-      .addItem('🚀 Run Both: Recalibrate & Plot Graph', 'runRecalibrateAndPlot1138_1474')
+      .addItem('📈 Plot Comparison Graph (Rows 2283 - 2654)', 'createComparisonChart2283_2654')
+      .addItem('🎯 Recalculate Ground Truth (11.0 cm = Full Tank)', 'recalculateUltrasonicGroundTruth2283_2654')
+      .addItem('🚀 Run Both: Recalibrate & Plot Graph (Rows 2283 - 2654)', 'runRecalibrateAndPlot2283_2654')
       .addSeparator()
       .addItem('⚙️ Custom Row Range Plot...', 'promptCustomComparisonChart')
       .addToUi();
@@ -53,18 +53,18 @@ function doGet(e) {
     return setManualTestConfig(e.parameter.test_name, e.parameter.duration_min);
   }
 
-  // Dashboard API: Plot Comparison Graph (Rows 1138 - 1474 default)
+  // Dashboard API: Plot Comparison Graph (Rows 2283 - 2654 default)
   if (e && e.parameter && e.parameter.action === "plot_comparison") {
-    var start = e.parameter.start ? parseInt(e.parameter.start, 10) : 1138;
-    var end = e.parameter.end ? parseInt(e.parameter.end, 10) : 1474;
+    var start = e.parameter.start ? parseInt(e.parameter.start, 10) : 2283;
+    var end = e.parameter.end ? parseInt(e.parameter.end, 10) : 2654;
     return ContentService.createTextOutput(JSON.stringify(createComparisonChartForRange(start, end)))
       .setMimeType(ContentService.MimeType.JSON);
   }
 
   // Dashboard API: Recalculate Ground Truth with 11.0 cm full tank
   if (e && e.parameter && e.parameter.action === "recalibrate") {
-    var start = e.parameter.start ? parseInt(e.parameter.start, 10) : 1138;
-    var end = e.parameter.end ? parseInt(e.parameter.end, 10) : 1474;
+    var start = e.parameter.start ? parseInt(e.parameter.start, 10) : 2283;
+    var end = e.parameter.end ? parseInt(e.parameter.end, 10) : 2654;
     var offset = e.parameter.full_offset ? parseFloat(e.parameter.full_offset) : 11.0;
     var depth = e.parameter.tank_depth ? parseFloat(e.parameter.tank_depth) : 122.0;
     return ContentService.createTextOutput(JSON.stringify(recalculateUltrasonicGroundTruth(start, end, offset, depth)))
@@ -109,6 +109,12 @@ function handleData(e) {
           }
         }
       } catch (jsonErr) {}
+    }
+
+    // Route dedicated high-resolution event recording payloads to Sheet 2 (HighRes_Event_Logs)
+    if ((jsonBody && (jsonBody.highres_upload === true || jsonBody.event_upload === true)) ||
+        params.event_upload === "true" || params.highres_upload === "true") {
+      return handleHighResEventUpload(params, jsonBody);
     }
 
     // Determine if payload is single item or bulk backlog from offline ESP32 storage
@@ -397,6 +403,134 @@ function getOrCreateLogSheet() {
   return sheet;
 }
 
+// =========================================================================
+// SHEET 2: HIGH-RESOLUTION EVENT LOGS (DEDICATED EVENT CAPTURE)
+// =========================================================================
+function getOrCreateHighResSheet() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheetName = "HighRes_Event_Logs";
+  var sheet = ss.getSheetByName(sheetName);
+
+  if (!sheet) {
+    sheet = ss.insertSheet(sheetName);
+  }
+
+  if (sheet.getLastRow() === 0) {
+    var headers = [
+      "Event ID",
+      "Event Name",
+      "Timestamp (High-Res)",
+      "Elapsed Time (s)",
+      "Sensor Voltage (V)",
+      "Gauge Pressure (kPa)",
+      "dP/dt (kPa/s)",
+      "Tap Flow State",
+      "Ultrasonic Distance (cm)",
+      "Ultrasonic Ground Truth (%)",
+      "Pressure Est. Level (%)",
+      "Flow Rate (L/s)",
+      "Cumulative Volume (L)"
+    ];
+
+    sheet.appendRow(headers);
+    var headerRange = sheet.getRange(1, 1, 1, headers.length);
+    headerRange.setBackground("#0F172A");
+    headerRange.setFontColor("#FFFFFF");
+    headerRange.setFontWeight("bold");
+    headerRange.setHorizontalAlignment("center");
+    headerRange.setFontFamily("Consolas");
+    sheet.setFrozenRows(1);
+
+    for (var c = 1; c <= headers.length; c++) {
+      sheet.setColumnWidth(c, c === 2 ? 180 : (c === 3 ? 200 : 120));
+    }
+  }
+  return sheet;
+}
+
+/**
+ * Ingests high-resolution chunked event records from ESP32 into Sheet 2
+ * Applies distinct pastel color coding for each unique event
+ */
+function handleHighResEventUpload(params, jsonBody) {
+  var lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(15000);
+  } catch (err) {
+    return ContentService.createTextOutput(JSON.stringify({ status: "error", message: "Server busy / lock timeout" }))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+
+  try {
+    var sheet = getOrCreateHighResSheet();
+    var records = (jsonBody && (jsonBody.records || jsonBody.bulk)) ? (jsonBody.records || jsonBody.bulk) : [];
+    if (!Array.isArray(records) || records.length === 0) {
+      return ContentService.createTextOutput(JSON.stringify({ status: "error", message: "No records found in event upload payload" }))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+
+    var eventId = (jsonBody && jsonBody.event_id) ? jsonBody.event_id : (params.event_id || "EVT_1");
+    var eventName = (jsonBody && jsonBody.event_name) ? jsonBody.event_name : (params.event_name || "High-Res Event");
+    var colorIndex = (jsonBody && jsonBody.color_index !== undefined) ? parseInt(jsonBody.color_index, 10) : 0;
+
+    // Distinct Pastel Color Palette for clear visual differentiation between events
+    var EVENT_PALETTE = [
+      "#E0F2FE", // Soft Sky Blue
+      "#F3E8FF", // Soft Lavender Purple
+      "#D1FAE5", // Soft Mint Emerald
+      "#FEF3C7", // Soft Warm Amber
+      "#FFE4E6", // Soft Rose Pink
+      "#E0E7FF", // Soft Indigo
+      "#FFEDD5", // Soft Peach Orange
+      "#CCFBF1"  // Soft Aqua Teal
+    ];
+    var eventBgColor = EVENT_PALETTE[Math.abs(colorIndex) % EVENT_PALETTE.length];
+
+    var rows = [];
+    var defaultTimestamp = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "yyyy-MM-dd HH:mm:ss");
+
+    for (var i = 0; i < records.length; i++) {
+      var r = records[i];
+      var row = [
+        eventId,
+        eventName,
+        r.t || r.timestamp || defaultTimestamp,
+        r.s !== undefined ? parseFloat(r.s).toFixed(2) : (r.sec !== undefined ? parseFloat(r.sec).toFixed(2) : ""),
+        r.v !== undefined ? parseFloat(r.v).toFixed(3) : "",
+        r.p !== undefined ? parseFloat(r.p).toFixed(2) : "",
+        r.d !== undefined ? parseFloat(r.d).toFixed(2) : (r.dp !== undefined ? parseFloat(r.dp).toFixed(2) : ""),
+        r.st || "STATIC",
+        r.ud !== undefined ? parseFloat(r.ud).toFixed(1) : (r.u_dist !== undefined ? parseFloat(r.u_dist).toFixed(1) : ""),
+        r.ul !== undefined ? parseFloat(r.ul).toFixed(1) : (r.u_lvl !== undefined ? parseFloat(r.u_lvl).toFixed(1) : ""),
+        r.pl !== undefined ? parseFloat(r.pl).toFixed(1) : (r.p_lvl !== undefined ? parseFloat(r.p_lvl).toFixed(1) : ""),
+        r.fl !== undefined ? parseFloat(r.fl).toFixed(3) : "",
+        r.vl !== undefined ? parseFloat(r.vl).toFixed(3) : ""
+      ];
+      rows.push(row);
+    }
+
+    if (rows.length > 0) {
+      var startRow = sheet.getLastRow() + 1;
+      var range = sheet.getRange(startRow, 1, rows.length, rows[0].length);
+      range.setValues(rows);
+      range.setBackground(eventBgColor);
+      range.setFontFamily("Consolas");
+      range.setFontSize(9);
+    }
+
+    return ContentService.createTextOutput(JSON.stringify({
+      status: "success",
+      event_id: eventId,
+      event_name: eventName,
+      rows_added: rows.length,
+      color: eventBgColor,
+      message: "Logged " + rows.length + " high-res samples to Sheet 2 ('HighRes_Event_Logs') with event color " + eventBgColor
+    })).setMimeType(ContentService.MimeType.JSON);
+  } finally {
+    lock.releaseLock();
+  }
+}
+
 function fetchDashboardPayload() {
   var sheet = getOrCreateLogSheet();
   var data = sheet.getDataRange().getValues();
@@ -446,39 +580,51 @@ function getLatestDashboardData() {
 // =========================================================================
 
 /**
- * Menu Action: Plots Comparison Graph for Dissertation Rows 1138 to 1474
+ * Menu Action: Plots Comparison Graph for Dissertation Rows 2283 to 2654
  */
-function createComparisonChart1138_1474() {
-  var res = createComparisonChartForRange(1138, 1474);
+function createComparisonChart2283_2654() {
+  var res = createComparisonChartForRange(2283, 2654);
   try {
     SpreadsheetApp.getUi().alert("✅ Comparison Graph Plotted!\n\n" + res.message);
   } catch(e) {}
 }
 
+function createComparisonChart1138_1474() {
+  return createComparisonChart2283_2654();
+}
+
 /**
- * Menu Action: Recalculates Ultrasonic Ground Truth using 11.0 cm = 100% Full
+ * Menu Action: Recalculates Ultrasonic Ground Truth using 11.0 cm = 100% Full (Rows 2283 to 2654)
  */
-function recalculateUltrasonicGroundTruth1138_1474() {
-  var res = recalculateUltrasonicGroundTruth(1138, 1474, 11.0, 122.0);
+function recalculateUltrasonicGroundTruth2283_2654() {
+  var res = recalculateUltrasonicGroundTruth(2283, 2654, 11.0, 122.0);
   try {
     SpreadsheetApp.getUi().alert("✅ Recalibration Complete!\n\n" + res.message);
   } catch(e) {}
 }
 
+function recalculateUltrasonicGroundTruth1138_1474() {
+  return recalculateUltrasonicGroundTruth2283_2654();
+}
+
 /**
  * Menu Action: Runs Both Recalibration (11.0 cm Full) and Plots Comparison Graph
  */
-function runRecalibrateAndPlot1138_1474() {
-  var recRes = recalculateUltrasonicGroundTruth(1138, 1474, 11.0, 122.0);
-  var chartRes = createComparisonChartForRange(1138, 1474);
+function runRecalibrateAndPlot2283_2654() {
+  var recRes = recalculateUltrasonicGroundTruth(2283, 2654, 11.0, 122.0);
+  var chartRes = createComparisonChartForRange(2283, 2654);
   try {
     SpreadsheetApp.getUi().alert(
       "🎉 Calibration & Graph Successfully Completed!\n\n" +
       "1. Calibrated " + (recRes.updatedCount || 0) + " rows using 11.0 cm as 100% full tank.\n" +
       "2. Plotted comparison chart on 'WaterLevel_Synchronized_Logs' (Col P).\n" +
-      "3. Created/Refreshed dedicated evaluation tab 'Comparison_1138_1474' with MAE & RMSE evaluation statistics!"
+      "3. Created/Refreshed dedicated evaluation tab 'Comparison_2283_2654' with MAE & RMSE evaluation statistics!"
     );
   } catch(e) {}
+}
+
+function runRecalibrateAndPlot1138_1474() {
+  return runRecalibrateAndPlot2283_2654();
 }
 
 /**
@@ -516,8 +662,8 @@ function createComparisonChartForRange(startRow, endRow) {
     return { status: "error", message: "Sheet 'WaterLevel_Synchronized_Logs' not found" };
   }
 
-  startRow = startRow || 1138;
-  endRow = endRow || 1474;
+  startRow = startRow || 2283;
+  endRow = endRow || 2654;
 
   var lastRow = sheet.getLastRow();
   if (lastRow < 2) {
@@ -1026,20 +1172,20 @@ function renderDashboardHtml() {
       <!-- Water Level Comparison & 11.0 cm Calibration Card -->
       <div class="card" style="border-color: rgba(14, 165, 233, 0.35);">
         <div class="card-title">
-          <span>Dissertation Evaluation (Rows 1138 - 1474)</span>
+          <span>Dissertation Evaluation (Rows 2283 - 2654)</span>
           <span style="font-size: 0.72rem; color: #10b981; font-weight: 700; background: rgba(16,185,129,0.15); padding: 3px 8px; border-radius: 6px;">11.0 cm = FULL</span>
         </div>
         <p style="font-size: 0.8rem; color: var(--muted); margin-bottom: 0.75rem;">
-          Calibrate ultrasonic distance benchmark (11.0 cm full tank) and generate publication-quality comparison chart for rows 1138–1474.
+          Calibrate ultrasonic distance benchmark (11.0 cm full tank) and generate publication-quality comparison chart for rows 2283–2654.
         </p>
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; margin-bottom: 0.75rem;">
           <div>
             <label style="font-size: 0.7rem; color: var(--muted); display: block; margin-bottom: 2px;">Start Row</label>
-            <input type="number" id="plotStartRow" value="1138" style="padding: 6px 10px; border-radius: 6px;">
+            <input type="number" id="plotStartRow" value="2283" style="padding: 6px 10px; border-radius: 6px;">
           </div>
           <div>
             <label style="font-size: 0.7rem; color: var(--muted); display: block; margin-bottom: 2px;">End Row</label>
-            <input type="number" id="plotEndRow" value="1474" style="padding: 6px 10px; border-radius: 6px;">
+            <input type="number" id="plotEndRow" value="2654" style="padding: 6px 10px; border-radius: 6px;">
           </div>
         </div>
         <div style="margin-top: 0.75rem;">
@@ -1270,8 +1416,8 @@ function renderDashboardHtml() {
 
     // Trigger 11.0 cm Recalibration & Plotting from Web Dashboard
     async function recalibrateAndPlotWeb() {
-      let start = document.getElementById('plotStartRow').value || 1138;
-      let end = document.getElementById('plotEndRow').value || 1474;
+      let start = document.getElementById('plotStartRow').value || 2283;
+      let end = document.getElementById('plotEndRow').value || 2654;
 
       try {
         // Step 1: Recalibrate with 11.0 cm full mark and 122.0 cm tank depth

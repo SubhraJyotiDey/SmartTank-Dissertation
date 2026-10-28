@@ -38,6 +38,10 @@ bool usingExternalAdc = false;
 // Automatic Cloud OTA Self-Updater (every 15 minutes)
 CloudOTAUpdater cloudOTA(FIRMWARE_VERSION, OTA_BIN_FILENAME, DEFAULT_GITHUB_OTA_TOKEN);
 
+#include "highres_event_recorder.h"
+// High-Resolution 10 Hz Event Recorder (Buffers in SPIFFS & Uploads in Chunks to Sheet 2)
+HighResEventRecorder eventRecorder;
+
 // =========================================================================
 // ENUMS & STATE STRUCTURES
 // =========================================================================
@@ -123,6 +127,9 @@ void handleCalibrateApi();
 void handleSettingsApi();
 void handleManualLogApi();
 void handleOtaCheckApi();
+void handleEventStartApi();
+void handleEventStopApi();
+void handleEventStatusApi();
 
 // =========================================================================
 // SETUP
@@ -186,6 +193,9 @@ void setup() {
   server.on("/api/settings", HTTP_POST, handleSettingsApi);
   server.on("/api/log_sheets", HTTP_POST, handleManualLogApi);
   server.on("/api/ota_check", HTTP_POST, handleOtaCheckApi);
+  server.on("/api/event/start", HTTP_POST, handleEventStartApi);
+  server.on("/api/event/stop", HTTP_POST, handleEventStopApi);
+  server.on("/api/event/status", HTTP_GET, handleEventStatusApi);
   server.begin();
   Serial.println(F("[HTTP] Embedded Web Server started on port 80"));
 
@@ -251,6 +261,9 @@ void loop() {
   server.handleClient();
   maintainMqtt();
 
+  // Process chunked background upload of high-res event data to Sheet 2
+  eventRecorder.processChunkedUpload(googleScriptUrl);
+
   unsigned long currentMillis = millis();
 
   // Sample sensor and update dynamic state machine at 10 Hz (every 100 ms)
@@ -262,6 +275,11 @@ void loop() {
     updateFlowStateMachine();
     calculateWaterLevel();
     publishMqttTelemetry(); // Broadcast 10 Hz stream to global cloud
+
+    // High-Resolution Event Capture at 10 Hz (100 ms precision)
+    const char* stStr = (tapState == STATE_TAP_OPEN) ? "TAP_OPEN" :
+                        (tapState == STATE_SETTLING) ? "SETTLING" : "STATIC";
+    eventRecorder.captureSample(sensorVoltage, filteredPressure, dPdt, stStr, waterLevelPct, flowRateLps, totalDischargedLiters);
   }
 
   // Check NTP clock and synchronized 10-minute Google Sheets logging
@@ -1047,5 +1065,51 @@ void handleOtaCheckApi() {
   Serial.println(F("[WEB] Manual Cloud OTA check triggered via Web Dashboard"));
   bool updated = cloudOTA.checkAndUpdate(true);
   String json = "{\"status\":\"success\",\"message\":\"" + cloudOTA.getStatus() + "\"}";
+  server.send(200, "application/json", json);
+}
+
+// =========================================================================
+// HIGH-RESOLUTION EVENT REST API HANDLERS
+// =========================================================================
+void handleEventStartApi() {
+  String name = server.hasArg("name") ? server.arg("name") : "Tap Event";
+  float durationSec = 30.0f;
+  if (server.hasArg("duration_sec")) {
+    durationSec = server.arg("duration_sec").toFloat();
+  } else if (server.hasArg("duration_min")) {
+    durationSec = server.arg("duration_min").toFloat() * 60.0f;
+  }
+  if (durationSec < 5.0f) durationSec = 5.0f;
+  if (durationSec > 600.0f) durationSec = 600.0f; // Max 10 min
+
+  int colorIdx = server.hasArg("color_idx") ? server.arg("color_idx").toInt() : (int)(millis() % 8);
+
+  bool ok = eventRecorder.startEvent(name, durationSec, colorIdx);
+  if (ok) {
+    server.send(200, "application/json", "{\"status\":\"success\",\"message\":\"High-res 10 Hz recording started!\"}");
+  } else {
+    server.send(400, "application/json", "{\"status\":\"error\",\"message\":\"Recorder busy or upload in progress\"}");
+  }
+}
+
+void handleEventStopApi() {
+  eventRecorder.stopEvent();
+  server.send(200, "application/json", "{\"status\":\"success\",\"message\":\"Recording stopped. Streaming chunks to Sheet 2...\"}");
+}
+
+void handleEventStatusApi() {
+  String json = "{";
+  json += "\"recording\":" + String(eventRecorder.isRecording() ? "true" : "false") + ",";
+  json += "\"name\":\"" + eventRecorder.getEventName() + "\",";
+  json += "\"event_id\":\"" + eventRecorder.getEventId() + "\",";
+  json += "\"elapsed_sec\":" + String(eventRecorder.getElapsedSec(), 1) + ",";
+  json += "\"duration_sec\":" + String(eventRecorder.getDurationSec(), 1) + ",";
+  json += "\"samples\":" + String(eventRecorder.getSamplesCount()) + ",";
+  json += "\"uploading\":" + String(eventRecorder.isUploading() ? "true" : "false") + ",";
+  json += "\"upload_pct\":" + String(eventRecorder.getUploadProgressPct()) + ",";
+  json += "\"upload_status\":\"" + eventRecorder.getUploadStatus() + "\",";
+  json += "\"rooftop_dist\":" + String(eventRecorder.getRooftopDist(), 1) + ",";
+  json += "\"rooftop_level\":" + String(eventRecorder.getRooftopLevel(), 1);
+  json += "}";
   server.send(200, "application/json", json);
 }

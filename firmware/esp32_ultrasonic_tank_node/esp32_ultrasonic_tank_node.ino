@@ -23,8 +23,12 @@
 #include <SPIFFS.h>
 #include <time.h>
 #include <ArduinoOTA.h>
+#include <WebServer.h>
 #include "config.h"
 #include "cloud_ota_updater.h"
+
+// WebServer for local high-speed telemetry query by Pressure Node
+WebServer server(80);
 
 // Automatic Cloud OTA Self-Updater (every 15 minutes)
 CloudOTAUpdater cloudOTA(FIRMWARE_VERSION, OTA_BIN_FILENAME, DEFAULT_GITHUB_OTA_TOKEN);
@@ -90,6 +94,20 @@ void setup() {
   initOTA();
   initNTP();
 
+  // Local API for Node 1 to fetch live ultrasonic ground truth during high-res events
+  server.on("/api/reading", HTTP_GET, []() {
+    String json = "{";
+    json += "\"distance_cm\":" + String(measuredDistanceCm, 1) + ",";
+    json += "\"water_height_cm\":" + String(waterHeightCm, 1) + ",";
+    json += "\"level_pct\":" + String(waterLevelPct, 1) + ",";
+    json += "\"offset_cm\":" + String(sensorOffsetCm, 1) + ",";
+    json += "\"depth_cm\":" + String(tankDepthCm, 1);
+    json += "}";
+    server.send(200, "application/json", json);
+  });
+  server.begin();
+  Serial.println(F("[HTTP] Local telemetry API started on port 80"));
+
   Serial.println(F("[SYSTEM] Ultrasonic Ground Truth Node initialized."));
 }
 
@@ -97,6 +115,8 @@ void setup() {
 // MAIN LOOP
 // =========================================================================
 void loop() {
+  server.handleClient();
+
   // Handle Over-The-Air Remote Code Upload requests
   ArduinoOTA.handle();
 

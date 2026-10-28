@@ -71,9 +71,9 @@ Both readings will be aligned in the **same row** under the matching 1-minute ti
 
 ---
 
-## Step 5: Plotting Comparison Graph (Rows 1138 to 1474) & 11.0 cm Full Calibration
+## Step 5: Plotting Comparison Graph (Rows 2283 to 2654) & 11.0 cm Full Calibration
 
-When evaluating model predictions against ultrasound ground reality for your dissertation (rows 1138 to 1474):
+When evaluating model predictions against ultrasound ground reality for your dissertation (rows 2283 to 2654):
 
 ### Physical Baseline:
 - **Tank Full Distance**: **`11.0 cm`** (air gap measured from the ultrasound sensor face down to the water surface when the tank is at maximum 100% full capacity).
@@ -90,12 +90,12 @@ When evaluating model predictions against ultrasound ground reality for your dis
 2. In the top Google Sheets menu bar, click the custom menu:
    **`📊 Water Level Analysis`**
 3. Click:
-   - **`🚀 Run Both: Recalibrate & Plot Graph`** (or individually: **`🎯 Recalculate Ground Truth (11.0 cm = Full Tank)`** then **`📈 Plot Comparison Graph (Rows 1138 - 1474)`**).
+   - **`🚀 Run Both: Recalibrate & Plot Graph (Rows 2283 - 2654)`** (or individually: **`🎯 Recalculate Ground Truth (11.0 cm = Full Tank)`** then **`📈 Plot Comparison Graph (Rows 2283 - 2654)`**).
 4. Google Sheets will automatically:
    - Recalculate all ultrasonic ground truth % values in **Column H** using 11.0 cm as full tank.
    - Update Absolute Error $\Delta$ in **Column I** and Depth Error in **Column J**.
    - Embed a line comparison chart at **Column P** on `WaterLevel_Synchronized_Logs`.
-   - Create a dedicated analysis tab: **`Comparison_1138_1474`** containing:
+   - Create a dedicated analysis tab: **`Comparison_2283_2654`** containing:
      - MAE (Mean Absolute Error)
      - RMSE (Root Mean Square Error)
      - Max Error
@@ -105,46 +105,55 @@ When evaluating model predictions against ultrasound ground reality for your dis
 
 ### Method 2: One-Click via Cloud Web Dashboard
 1. Open your deployed Web App URL in your browser.
-2. Scroll to the **Dissertation Evaluation (Rows 1138 - 1474)** card.
-3. Verify Start Row = `1138` and End Row = `1474`.
+2. Scroll to the **Dissertation Evaluation (Rows 2283 - 2654)** card.
+3. Verify Start Row = `2283` and End Row = `2654`.
 4. Click **🚀 Calibrate (11.0cm) & Plot Graph**.
 
 ---
 
 ### Method 3: Direct Google Sheets Cell Formulas
 If you want to apply or inspect the exact formula in Google Sheets cells:
-1. **Ultrasonic Ground Truth (%)** (Column H, Row 1138):
+1. **Ultrasonic Ground Truth (%)** (Column H, Row 2283):
    ```excel
-   =IF(ISBLANK(G1138), "", MAX(0, MIN(100, ROUND((1 - (G1138 - 11.0) / 122) * 100, 1))))
+   =IF(ISBLANK(G2283), "", MAX(0, MIN(100, ROUND((1 - (G2283 - 11.0) / 122) * 100, 1))))
    ```
-   *Drag down from H1138 to H1474.*
-2. **Absolute Error Δ (%)** (Column I, Row 1138):
+   *Drag down from H2283 to H2654.*
+2. **Absolute Error Δ (%)** (Column I, Row 2283):
    ```excel
-   =IF(OR(ISBLANK(D1138), ISBLANK(H1138)), "", ROUND(ABS(D1138 - H1138), 2))
+   =IF(OR(ISBLANK(D2283), ISBLANK(H2283)), "", ROUND(ABS(D2283 - H2283), 2))
    ```
-   *Drag down from I1138 to I1474.*
-3. **Depth Error (cm)** (Column J, Row 1138):
+   *Drag down from I2283 to I2654.*
+3. **Depth Error (cm)** (Column J, Row 2283):
    ```excel
-   =IF(ISBLANK(I1138), "", ROUND((I1138 / 100) * 122, 2))
+   =IF(ISBLANK(I2283), "", ROUND((I2283 / 100) * 122, 2))
    ```
-   *Drag down from J1138 to J1474.*
+   *Drag down from J2283 to J2654.*
 
 ---
 
 ### Method 4: Manual Chart Insertion via Google Sheets UI
-1. In `WaterLevel_Synchronized_Logs`, select cell range `A1138:A1474`.
-2. Hold `Ctrl` (or `Cmd` on Mac) and select cell range `D1138:D1474`.
-3. Keep holding `Ctrl` and select cell range `H1138:H1474`.
+1. In `WaterLevel_Synchronized_Logs`, select cell range `A2283:A2654`.
+2. Hold `Ctrl` (or `Cmd` on Mac) and select cell range `D2283:D2654`.
+3. Keep holding `Ctrl` and select cell range `H2283:H2654`.
 4. Click **Insert** > **Chart** in the top menu.
 5. In the **Chart Editor** sidebar (right side):
    - **Chart type**: Select **Line chart** (or Smooth line chart).
-   - **X-axis**: Confirm `A1138:A1474` (Timestamp Slot).
-   - **Series**: Confirm `D1138:D1474` (Pressure Predicted Level %) and `H1138:H1474` (Ultrasonic Ground Truth %).
+   - **X-axis**: Confirm `A2283:A2654` (Timestamp Slot).
+   - **Series**: Confirm `D2283:D2654` (Pressure Predicted Level %) and `H2283:H2654` (Ultrasonic Ground Truth %).
 6. Under **Customize**:
-   - **Chart & axis titles**: Set Title to `"Water Level Prediction vs Ultrasonic Ground Truth (Rows 1138 - 1474)"`.
+   - **Chart & axis titles**: Set Title to `"Water Level Prediction vs Ultrasonic Ground Truth (Rows 2283 - 2654)"`.
    - **Horizontal axis**: Set title to `"Time Slot (1-Min Intervals)"`.
    - **Vertical axis**: Set title to `"Water Level (%)"`, Min: `0`, Max: `100`.
    - **Series Colors**: Blue for Prediction (`#0284c7`), Green for Ground Truth (`#10b981`).
+
+---
+
+### Method 5: Standalone 300 DPI Python Figure Generation
+To generate publication-quality figures for your thesis report:
+```powershell
+python a:\Dissertation\code\plot_water_level_comparison.py --start 2283 --end 2654
+```
+*Outputs: `water_level_comparison_rows_2283_2654.png` with MAE, RMSE, Pearson correlation, and residual error bands.*
 
 ---
 
