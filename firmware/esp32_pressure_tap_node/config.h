@@ -136,6 +136,6 @@
 
 // Optional GitHub Personal Access Token (PAT) for private repo access.
 // If empty, public release URLs are queried. Can also be set in Web Dashboard.
-#define DEFAULT_GITHUB_OTA_TOKEN    ""
+#define DEFAULT_GITHUB_OTA_TOKEN    "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"
 
 #endif // CONFIG_H

@@ -221,27 +221,61 @@ public:
     // Download stream and write directly to ESP32 flash partition
     bool flashFirmwareFromUrl(const String& url, bool useAssetApiHeader) {
         updateInProgress = true;
-        lastStatus = "Downloading & Flashing...";
+        lastStatus = "Resolving download URL...";
 
+        String finalDownloadUrl = url;
+
+        // Step 1: If downloading via GitHub Assets API with token, resolve the 302 redirect first!
+        // GitHub API responds with 302 redirect to Microsoft Azure / AWS S3 pre-signed storage URL.
+        if (useAssetApiHeader && token.length() > 0) {
+            WiFiClientSecure redirectClient;
+            redirectClient.setInsecure();
+
+            HTTPClient httpRedirect;
+            httpRedirect.setTimeout(15000);
+            httpRedirect.setFollowRedirects(HTTPC_DISABLE_FOLLOW_REDIRECTS);
+
+            const char* headerKeys[] = {"Location"};
+            httpRedirect.collectHeaders(headerKeys, 1);
+
+            if (httpRedirect.begin(redirectClient, url)) {
+                httpRedirect.addHeader("User-Agent", "ESP32-AutoOTA-v1.2");
+                httpRedirect.addHeader("Accept", "application/octet-stream");
+                httpRedirect.addHeader("Authorization", "Bearer " + token);
+
+                int code = httpRedirect.GET();
+                if (code == HTTP_CODE_FOUND || code == HTTP_CODE_MOVED_PERMANENTLY || code == 307 || code == 308) {
+                    String redirectedLocation = httpRedirect.header("Location");
+                    if (redirectedLocation.length() > 10) {
+                        finalDownloadUrl = redirectedLocation;
+                        Serial.println(F("[AUTO-OTA] ✅ Resolved GitHub 302 redirect to storage endpoint!"));
+                    }
+                }
+                httpRedirect.end();
+            }
+            redirectClient.stop();
+        }
+
+        // Step 2: Download stream from storage endpoint
+        // NOTE: If finalDownloadUrl was redirected from GitHub, it already contains signed SAS tokens.
+        // We MUST NOT pass the GitHub Bearer token to Azure/AWS or it will reject the request!
+        lastStatus = "Downloading & Flashing...";
         WiFiClientSecure downloadClient;
         downloadClient.setInsecure();
 
         HTTPClient http;
-        http.setTimeout(45000); // 45 seconds for firmware stream
-        http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
+        http.setTimeout(60000); // 60 seconds for 1.4 MB binary
+        http.setFollowRedirects(HTTPC_FORCE_FOLLOW_REDIRECTS);
 
-        if (!http.begin(downloadClient, url)) {
+        if (!http.begin(downloadClient, finalDownloadUrl)) {
             Serial.println(F("[AUTO-OTA] Failed to begin HTTP download client"));
             lastStatus = "Download connection error";
             updateInProgress = false;
             return false;
         }
 
-        http.addHeader("User-Agent", "ESP32-AutoOTA-v1.1");
-        if (useAssetApiHeader) {
-            http.addHeader("Accept", "application/octet-stream");
-        }
-        if (token.length() > 0) {
+        http.addHeader("User-Agent", "ESP32-AutoOTA-v1.2");
+        if (finalDownloadUrl == url && token.length() > 0) {
             http.addHeader("Authorization", "Bearer " + token);
         }
 

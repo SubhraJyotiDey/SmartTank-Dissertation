@@ -63,6 +63,6 @@
 #define GITHUB_RELEASE_TAG          "latest"
 
 // Optional GitHub Personal Access Token (PAT) for private repo access:
-#define DEFAULT_GITHUB_OTA_TOKEN    ""
+#define DEFAULT_GITHUB_OTA_TOKEN    "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"
 
 #endif // CONFIG_H
