@@ -45,31 +45,43 @@ private:
     String uploadStatusText = "Idle";
     unsigned long lastChunkPostTime = 0;
 
-    void fetchRooftopDistance() {
-        if (WiFi.status() != WL_CONNECTED) return;
-        HTTPClient http;
-        http.setTimeout(100); // 100 ms max timeout to prevent loop stutter
-        if (http.begin(rooftopApiUrl)) {
-            int code = http.GET();
-            if (code == HTTP_CODE_OK) {
-                String payload = http.getString();
-                int distIdx = payload.indexOf("\"distance_cm\":");
-                if (distIdx != -1) {
-                    float d = payload.substring(distIdx + 14).toFloat();
-                    if (d > 0.0f && d < 400.0f) cachedRooftopDist = d;
-                }
-                int lvlIdx = payload.indexOf("\"level_pct\":");
-                if (lvlIdx != -1) {
-                    float l = payload.substring(lvlIdx + 12).toFloat();
-                    if (l >= 0.0f && l <= 100.0f) cachedRooftopLevel = l;
+    // Rooftop background poller task running on Core 0 (Zero impact on Core 1 sampling)
+    static void rooftopWorkerTask(void* pvParameters) {
+        HighResEventRecorder* self = (HighResEventRecorder*)pvParameters;
+        while (true) {
+            if (WiFi.status() == WL_CONNECTED) {
+                WiFiClient client;
+                client.setTimeout(250);
+                HTTPClient http;
+                http.setTimeout(250);
+                if (http.begin(client, self->rooftopApiUrl)) {
+                    int code = http.GET();
+                    if (code == HTTP_CODE_OK) {
+                        String payload = http.getString();
+                        int distIdx = payload.indexOf("\"distance_cm\":");
+                        if (distIdx != -1) {
+                            float d = payload.substring(distIdx + 14).toFloat();
+                            if (d > 0.0f && d < 400.0f) self->cachedRooftopDist = d;
+                        }
+                        int lvlIdx = payload.indexOf("\"level_pct\":");
+                        if (lvlIdx != -1) {
+                            float l = payload.substring(lvlIdx + 12).toFloat();
+                            if (l >= 0.0f && l <= 100.0f) self->cachedRooftopLevel = l;
+                        }
+                    }
+                    http.end();
                 }
             }
-            http.end();
+            vTaskDelay(pdMS_TO_TICKS(1000));
         }
     }
 
 public:
     HighResEventRecorder() {}
+
+    void begin() {
+        xTaskCreatePinnedToCore(rooftopWorkerTask, "RooftopPoller", 4096, this, 1, NULL, 0);
+    }
 
     bool isRecording() const { return recordingActive; }
     bool isUploading() const { return uploadingActive; }
@@ -124,9 +136,6 @@ public:
         recordingActive = true;
         uploadStatusText = "Recording at 10 Hz...";
 
-        // Fetch fresh initial rooftop benchmark
-        fetchRooftopDistance();
-
         Serial.printf("\n===========================================================\n");
         Serial.printf(" [HIGH-RES] 🔴 STARTED EVENT RECORDING: '%s' (ID: %s)\n", eventName.c_str(), eventId.c_str());
         Serial.printf(" Duration: %.1f sec | Sampling: 10 Hz (100 ms) | Target: Sheet 2\n", durationSec);
@@ -141,12 +150,6 @@ public:
 
         unsigned long now = millis();
         float elapsedSec = (now - startMillis) / 1000.0f;
-
-        // Query rooftop node every 500 ms (fast / non-blocking)
-        if (now - lastRooftopFetch >= 500) {
-            lastRooftopFetch = now;
-            fetchRooftopDistance();
-        }
 
         // Append line to SPIFFS: s,v,p,d,st,ud,ul,pl,fl,vl
         if (writeBuffer) {

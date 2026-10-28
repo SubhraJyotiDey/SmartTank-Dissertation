@@ -181,6 +181,9 @@ void setup() {
   // Connect to Wi-Fi
   initWiFi();
 
+  // Start background rooftop node poller on Core 0
+  eventRecorder.begin();
+
   // Initialize Over-The-Air (OTA) Remote Uploading
   initOTA();
 

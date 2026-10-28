@@ -34,7 +34,7 @@ function onOpen() {
 
 function doGet(e) {
   // ESP32 Node Data Logging
-  if (e && e.parameter && (e.parameter.node || e.parameter.voltage || e.parameter.pressure_kpa)) {
+  if (e && e.parameter && (e.parameter.node || e.parameter.voltage || e.parameter.pressure_kpa || e.parameter.highres_upload || e.parameter.event_upload)) {
     return handleData(e);
   }
 
