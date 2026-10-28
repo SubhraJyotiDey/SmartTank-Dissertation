@@ -288,14 +288,14 @@ void loop() {
 }
 
 // =========================================================================
-// SENSOR SAMPLING & ADVANCED NOISE FILTERING
+// SENSOR SAMPLING & DIRECT ADC READING (NO DIGITAL FILTERS)
 // =========================================================================
 void sampleSensors() {
   if (usingExternalAdc) {
     // -----------------------------------------------------------------------
-    // A. 16-BIT PRECISION SAMPLING VIA EXTERNAL ADS1115 I2C ADC
+    // A. 16-BIT PRECISION SAMPLING VIA EXTERNAL ADS1115 I2C ADC (DIRECT HARDWARE)
     // -----------------------------------------------------------------------
-    float vRead = ads.readVoltageAveraged(ADS1115_PRESSURE_CH, 4);
+    float vRead = ads.readVoltage(ADS1115_PRESSURE_CH);
     if (vRead >= 0.0f) {
       #if ADS1115_DIRECT_5V
         // Direct Mode: Sensor 0.5V - 4.5V output read directly on A0
@@ -308,40 +308,10 @@ void sampleSensors() {
     }
   } else {
     // -----------------------------------------------------------------------
-    // B. FALLBACK: 12-BIT INTERNAL ESP32 ADC (GPIO 34) WITH TRIMMED MEAN
+    // B. FALLBACK: 12-BIT INTERNAL ESP32 ADC (GPIO 34) DIRECT SAMPLING
     // -----------------------------------------------------------------------
-    // 1. Take N samples into an array
-    int samples[ADC_OVERSAMPLE_COUNT];
-    for (int i = 0; i < ADC_OVERSAMPLE_COUNT; i++) {
-      samples[i] = analogRead(PIN_PRESSURE_ADC);
-      delayMicroseconds(80);
-    }
-
-    // 2. Simple Insertion Sort to discard top 20% and bottom 20% spikes (Trimmed Mean)
-    for (int i = 1; i < ADC_OVERSAMPLE_COUNT; i++) {
-      int key = samples[i];
-      int j = i - 1;
-      while (j >= 0 && samples[j] > key) {
-        samples[j + 1] = samples[j];
-        j--;
-      }
-      samples[j + 1] = key;
-    }
-
-    // Average the middle 60% of samples (discards any high/low outlier spikes)
-    int trimCount = ADC_OVERSAMPLE_COUNT / 5; // e.g. 12 samples trimmed on each side
-    long middleSum = 0;
-    int validCount = 0;
-    for (int i = trimCount; i < (ADC_OVERSAMPLE_COUNT - trimCount); i++) {
-      middleSum += samples[i];
-      validCount++;
-    }
-    rawAdcAvg = (float)middleSum / (float)validCount;
-
-    // 3. Convert ADC counts to pin voltage (Using calibrated 0 - 1.50V reference)
+    rawAdcAvg = (float)analogRead(PIN_PRESSURE_ADC);
     float vPin = (rawAdcAvg / ADC_RESOLUTION) * ADC_REF_VOLTAGE;
-
-    // 4. Reconstruct actual sensor output voltage through voltage divider
     sensorVoltage = vPin / VOLTAGE_DIVIDER_RATIO;
   }
 
@@ -353,35 +323,20 @@ void sampleSensors() {
     currentPressure = (sensorVoltage - SENSOR_MIN_V) * (SENSOR_MAX_KPA / (SENSOR_MAX_V - SENSOR_MIN_V));
   }
 
-  // 6. Exponential Moving Average (EMA) with dynamic slew-rate adaptation & Deadband
-  if (filteredPressure <= 0.001f) {
-    filteredPressure = currentPressure;
-  } else {
-    float diff = currentPressure - filteredPressure;
-    
-    // Deadband clamping: If pressure drift is smaller than 0.35 kPa (~3.5 cm of water),
-    // treat it as static baseline noise and hold it perfectly steady!
-    if (fabs(diff) < 0.35f) {
-      // Very gentle drift tracking (0.01) to adapt to real tank drain over hours without flickering
-      filteredPressure += 0.01f * diff;
-    } else {
-      // Real change or tap event: update rapidly
-      float alpha = (fabs(diff) > 2.0f) ? 0.35f : 0.12f;
-      filteredPressure = (alpha * currentPressure) + ((1.0f - alpha) * filteredPressure);
-    }
-  }
+  // Direct Gauge Output directly from ADC (No digital smoothing, EMA, or deadband)
+  filteredPressure = currentPressure;
 }
 
 // =========================================================================
 // ADVANCED DUAL-CONDITION HYDRAULIC FLOW & WATER HAMMER CLASSIFIER
 // =========================================================================
 void updateFlowStateMachine() {
-  // 1. Instantaneous time derivative dP/dt in kPa/s (dt = 100 ms)
+  // 1. Instantaneous time derivative dP/dt in kPa/s (dt = 100 ms, direct from ADC)
   float instantDpH = (filteredPressure - prevPressure) / 0.10f;
   prevPressure = filteredPressure;
 
-  // 2. Smooth derivative to eliminate 1-frame ADC glitches
-  dPdt = (0.30f * instantDpH) + (0.70f * dPdt);
+  // Direct instantaneous derivative from ADC
+  dPdt = instantDpH;
 
   unsigned long now = millis();
 
@@ -484,21 +439,8 @@ void calculateWaterLevel() {
     targetPct = constrain(rawPct, 0.0f, 100.0f);
   }
 
-  // Smooth the displayed level percentage:
-  // In steady static state, changes occur over minutes. Filter out any remaining 0.1% jitter.
-  if (waterLevelPct <= 0.01f && targetPct > 0.0f) {
-    waterLevelPct = targetPct; // Initial quick start
-  } else if (tapState == STATE_TAP_OPEN) {
-    waterLevelPct = frozenLevelPct; // Hold perfectly frozen during discharge
-  } else {
-    // Ultra-smooth percentage tracking (rejects momentary ADC flicker)
-    float diffPct = targetPct - waterLevelPct;
-    if (fabs(diffPct) > 3.0f) {
-      waterLevelPct += 0.20f * diffPct; // Rapid catch-up on genuine level change
-    } else {
-      waterLevelPct += 0.03f * diffPct; // Rock-solid steady baseline
-    }
-  }
+  // Direct water level percentage from ADC without digital smoothing filter
+  waterLevelPct = (tapState == STATE_TAP_OPEN) ? frozenLevelPct : targetPct;
 
   // Available Volume in Liters
   waterVolumeL = (waterLevelPct / 100.0f) * tankCapacityL;
@@ -710,7 +652,7 @@ void handleNtpAndLogging() {
 
       String stateStr = (tapState == STATE_TAP_OPEN) ? "TAP_OPEN" :
                         (tapState == STATE_SETTLING) ? "SETTLING" : "STATIC";
-      float logP = (tapState == STATE_TAP_OPEN) ? lastStaticPressure : filteredPressure;
+      float logP = filteredPressure; // Real gauge output directly from ADC
 
       Serial.printf("[SYNC] 1-Minute boundary reached: %s. Uploading...\n", timeBuf);
 
@@ -748,7 +690,7 @@ bool sendToGoogleSheets(const String& timestampStr) {
 
   String stateStr = (tapState == STATE_TAP_OPEN) ? "TAP_OPEN" :
                     (tapState == STATE_SETTLING) ? "SETTLING" : "STATIC";
-  float logP = (tapState == STATE_TAP_OPEN) ? lastStaticPressure : filteredPressure;
+  float logP = filteredPressure; // Real gauge output directly from ADC
   float logLevel = waterLevelPct;
 
   String encodedTimestamp = timestampStr;

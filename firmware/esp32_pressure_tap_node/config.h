@@ -74,11 +74,10 @@
 // Water Hammer / Settling delay in milliseconds after tap closure
 #define SETTLING_DELAY_MS          3000
 
-// ADC Oversampling count with Sort-and-Trim (trimmed mean) for noise rejection
-#define ADC_OVERSAMPLE_COUNT       60
-
-// Exponential Moving Average (EMA) smoothing factor (0.05 = super smooth)
-#define PRESSURE_EMA_ALPHA         0.05f
+// Direct ADC Sampling Mode: Digital software filters (oversampling & EMA) disabled
+// Gauge output is driven directly by hardware ADC conversions
+#define ADC_OVERSAMPLE_COUNT       1       // Direct 1:1 hardware conversion (no software oversampling)
+#define PRESSURE_EMA_ALPHA         1.0f    // Direct instantaneous passthrough (no low-pass EMA filter)
 
 // =========================================================================
 // 5. WI-FI & NETWORK SETTINGS
@@ -123,7 +122,7 @@
 // =========================================================================
 // 8. AUTOMATIC CLOUD OVER-THE-AIR (OTA) SELF-UPDATE (EVERY 15 MINUTES)
 // =========================================================================
-#define FIRMWARE_VERSION            "1.2.0"
+#define FIRMWARE_VERSION            "1.2.1"
 #define AUTO_OTA_ENABLED            true
 #define OTA_CHECK_INTERVAL_MIN      15      // Check for new updates every 15 minutes
 #define OTA_NODE_NAME               "pressure_node"
