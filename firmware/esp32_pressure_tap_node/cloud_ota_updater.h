@@ -45,14 +45,15 @@ private:
         int filePos = json.indexOf(targetFileName);
         if (filePos == -1) return "";
 
-        // Look backwards from file name for asset block to extract "url": "https://api.github.com/.../assets/12345"
-        int assetBlockStart = json.lastIndexOf("{\"url\":", filePos);
-        if (assetBlockStart != -1) {
-            int urlStart = json.indexOf("https://api.github.com/repos/", assetBlockStart);
-            if (urlStart != -1 && urlStart < filePos) {
-                int urlEnd = json.indexOf('"', urlStart);
-                if (urlEnd != -1) {
-                    outAssetApiUrl = json.substring(urlStart, urlEnd);
+        // Look backwards from file name to find the asset's API url: "https://api.github.com/repos/.../releases/assets/..."
+        int urlStart = json.lastIndexOf("https://api.github.com/repos/", filePos);
+        if (urlStart != -1 && urlStart < filePos) {
+            int urlEnd = json.indexOf('"', urlStart);
+            if (urlEnd != -1 && urlEnd < filePos) {
+                String candidateUrl = json.substring(urlStart, urlEnd);
+                if (candidateUrl.indexOf("/releases/assets/") != -1) {
+                    outAssetApiUrl = candidateUrl;
+                    Serial.printf("[AUTO-OTA] Found asset API URL: %s\n", outAssetApiUrl.c_str());
                 }
             }
         }

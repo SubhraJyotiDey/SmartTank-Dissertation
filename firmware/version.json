@@ -7,7 +7,7 @@
     "description": "Pressure Tap Node with direct 1:1 hardware ADC sampling (digital software filters, oversampling, and deadband removed)."
   },
   "ultrasonic_node": {
-    "version": "1.2.0",
+    "version": "1.2.1",
     "filename": "ultrasonic_node_firmware.bin",
     "description": "Ultrasonic Node with local /api/reading server and 15-minute Auto-OTA."
   }
