@@ -36,10 +36,13 @@ CloudOTAUpdater cloudOTA(FIRMWARE_VERSION, OTA_BIN_FILENAME, DEFAULT_GITHUB_OTA_
 // =========================================================================
 // GLOBAL VARIABLES
 // =========================================================================
-float tankDepthCm      = DEFAULT_TANK_DEPTH_CM;
-float sensorOffsetCm    = DEFAULT_SENSOR_OFFSET_CM;
+float tankDepthCm        = DEFAULT_TANK_DEPTH_CM;
+float sensorOffsetCm     = DEFAULT_SENSOR_OFFSET_CM;
 
 float measuredDistanceCm = 0.0f;
+float smoothedDistanceCm = -1.0f;   // Exponential Moving Average filtered distance
+float lastValidCandidate = -1.0f;   // Candidate for large jump validation
+int   consecutiveMisses  = 0;       // Counter for persistent echo timeout detection
 float waterHeightCm      = 0.0f;
 float waterLevelPct      = 0.0f;
 
@@ -113,6 +116,14 @@ void setup() {
     ESP.restart();
   });
 
+  // Remote Immediate Cloud OTA Update endpoint
+  server.on("/api/ota_update", HTTP_ANY, []() {
+    Serial.println(F("[HTTP] ⚡ Immediate Cloud OTA Update triggered on Node 2 via Web/API"));
+    server.send(200, "application/json", "{\"status\":\"ok\",\"message\":\"Starting Immediate Cloud OTA on Node 2...\"}");
+    delay(250);
+    cloudOTA.checkAndUpdate(true); // Force download & flash from GitHub
+  });
+
   server.begin();
   Serial.println(F("[HTTP] Local telemetry API started on port 80"));
 
@@ -147,21 +158,29 @@ void loop() {
 }
 
 // =========================================================================
-// ULTRASONIC MEASUREMENT WITH MULTI-SAMPLE MEDIAN FILTER
+// ULTRASONIC MEASUREMENT WITH MULTI-SAMPLE MEDIAN & TEMPORAL EMA FILTER
 // =========================================================================
 float measureDistanceSingle() {
-  // Send 10 microsecond pulse to TRIG pin
+  // 1. Wait up to 1000 us for ECHO line to be LOW if it was still active/ringing
+  unsigned long tWait = micros();
+  while (digitalRead(PIN_ECHO) == HIGH && (micros() - tWait) < 1000) {
+    delayMicroseconds(10);
+  }
+
+  // 2. Ensure TRIG line is clean and LOW
   digitalWrite(PIN_TRIG, LOW);
-  delayMicroseconds(2);
+  delayMicroseconds(4);
+
+  // 3. Send 20 microsecond pulse to TRIG pin (required for full transducer chirp energy on JSN-SR04T / AJ-SR04M)
   digitalWrite(PIN_TRIG, HIGH);
-  delayMicroseconds(10);
+  delayMicroseconds(20);
   digitalWrite(PIN_TRIG, LOW);
 
-  // Measure ECHO pulse duration in microseconds (timeout 30 ms ~ 5 meters max)
-  long duration = pulseIn(PIN_ECHO, HIGH, 30000);
+  // 4. Measure ECHO pulse duration in microseconds (25 ms timeout ~ 4.3 meters max)
+  long duration = pulseIn(PIN_ECHO, HIGH, 25000);
 
-  if (duration == 0) {
-    return -1.0f; // Timeout or sensor reading failed
+  if (duration <= 0) {
+    return -1.0f; // Timeout or missed echo
   }
 
   // Speed of sound in air ~= 343 m/s = 0.0343 cm/us
@@ -171,22 +190,32 @@ float measureDistanceSingle() {
 }
 
 float measureDistanceMedian() {
-  float readings[ULTRASONIC_SAMPLES];
+  const int SAMPLES = 9;
+  float readings[SAMPLES];
   int validCount = 0;
 
-  for (int i = 0; i < ULTRASONIC_SAMPLES; i++) {
+  for (int i = 0; i < SAMPLES; i++) {
     float d = measureDistanceSingle();
-    if (d > 2.0f && d < 450.0f) { // Valid range check
+    // Valid physical range check (exclude near-field blind-zone ringing < 8cm and out-of-tank > 350cm)
+    if (d >= 8.0f && d <= 350.0f) {
       readings[validCount++] = d;
     }
-    delay(30);
+    // 50 ms delay between pings: allows acoustic reverberations in tank to decay
+    // Also service HTTP client so local queries from Node 1 never block or time out
+    unsigned long dStart = millis();
+    while (millis() - dStart < 50) {
+      server.handleClient();
+      delay(2);
+    }
   }
 
-  if (validCount == 0) {
+  // Quorum requirement: Require at least 3 valid readings out of 9
+  // (Prevents a single random noise spike from being accepted when echoes are weak)
+  if (validCount < 3) {
     return -1.0f;
   }
 
-  // Sort array (Bubble sort for small array)
+  // Sort array (Bubble sort)
   for (int i = 0; i < validCount - 1; i++) {
     for (int j = 0; j < validCount - i - 1; j++) {
       if (readings[j] > readings[j + 1]) {
@@ -197,14 +226,42 @@ float measureDistanceMedian() {
     }
   }
 
-  // Return median value to reject outlier ripples/splashes
+  // Trimmed median: return the true center reading of the sorted cluster
   return readings[validCount / 2];
 }
 
 void calculateGroundTruth() {
-  float dist = measureDistanceMedian();
-  if (dist > 0.0f) {
-    measuredDistanceCm = dist;
+  float rawDist = measureDistanceMedian();
+
+  if (rawDist > 0.0f) {
+    consecutiveMisses = 0;
+
+    // Outlier jump protection:
+    // Water level cannot physically move > 15 cm in 2 seconds.
+    // If a sudden jump occurs, require 2 consecutive cycles to confirm before accepting
+    if (smoothedDistanceCm > 0.0f && fabs(rawDist - smoothedDistanceCm) > 15.0f) {
+      if (lastValidCandidate > 0.0f && fabs(rawDist - lastValidCandidate) < 5.0f) {
+        // Confirmed second reading: accept new level step (e.g. rapid tank filling)
+        smoothedDistanceCm = rawDist;
+        lastValidCandidate = -1.0f;
+      } else {
+        // Suspected ripple / transient reflection: hold candidate for next cycle
+        lastValidCandidate = rawDist;
+        rawDist = smoothedDistanceCm; // Suppress spike for this cycle
+      }
+    } else {
+      lastValidCandidate = -1.0f;
+    }
+
+    // Exponential Moving Average (EMA) Temporal Smoothing (alpha = 0.30):
+    // Drastically suppresses acoustic jitter and surface ripple fluctuations
+    if (smoothedDistanceCm <= 0.0f) {
+      smoothedDistanceCm = rawDist;
+    } else {
+      smoothedDistanceCm = (0.30f * rawDist) + (0.70f * smoothedDistanceCm);
+    }
+
+    measuredDistanceCm = smoothedDistanceCm;
 
     // Water level height calculation:
     // When tank is 100% full, distance to water = sensorOffsetCm
@@ -215,10 +272,17 @@ void calculateGroundTruth() {
     // Percentage
     waterLevelPct = (waterHeightCm / tankDepthCm) * 100.0f;
 
-    Serial.printf("[ULTRASONIC] Dist: %.1f cm | Height: %.1f cm | Ground Truth Level: %.1f%%\n",
-                  measuredDistanceCm, waterHeightCm, waterLevelPct);
+    Serial.printf("[ULTRASONIC] Raw: %.1f cm | Smooth Dist: %.1f cm | Height: %.1f cm | Level: %.1f%%\n",
+                  rawDist, measuredDistanceCm, waterHeightCm, waterLevelPct);
   } else {
-    Serial.println(F("[ULTRASONIC] Sensor read timeout/echo missed!"));
+    consecutiveMisses++;
+    Serial.printf("[ULTRASONIC] Sensor read timeout/echo missed! (Consecutive misses: %d)\n", consecutiveMisses);
+
+    // If echo is lost for > 6 consecutive cycles (12 seconds), flag as offline / out of range
+    // rather than staying silently frozen on a stale value
+    if (consecutiveMisses >= 6) {
+      waterLevelPct = -1.0f;
+    }
   }
 }
 

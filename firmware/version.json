@@ -1,14 +1,14 @@
 {
-  "firmware_version": "1.2.5",
-  "published_at": "2026-10-28T13:05:00Z",
+  "firmware_version": "1.2.6",
+  "published_at": "2026-10-30T11:30:00Z",
   "pressure_node": {
-    "version": "1.2.5",
+    "version": "1.2.6",
     "filename": "pressure_node_firmware.bin",
-    "description": "Pressure Tap Node with Node 2 remote reboot forwarder and rich ultrasound telemetry."
+    "description": "Pressure Tap Node with 1000ms poller timeout and 5-sec failure grace period to eliminate ultrasound telemetry flickering."
   },
   "ultrasonic_node": {
-    "version": "1.2.5",
+    "version": "1.2.6",
     "filename": "ultrasonic_node_firmware.bin",
-    "description": "Ultrasonic Node with /api/reboot endpoint and 15-minute Auto-OTA."
+    "description": "Ultrasonic Node with 20us trigger pulse for >60cm penetration, 50ms anti-reverberation delay, 3-sample quorum, and EMA jitter suppression."
   }
 }

@@ -734,9 +734,9 @@
         <div id="adcBadge" class="badge" onclick="openAdcModal()" style="background: rgba(14,165,233,0.15); border-color: rgba(14,165,233,0.3); color: #38bdf8; cursor:pointer;" title="Click to learn what 16-bit ADC counts mean">
           ADC: <span id="adcModeText" style="margin-left:4px;">ADS1115 (16-bit) ℹ️</span>
         </div>
-        <!-- Cloud OTA Version -->
-        <div id="otaBadge" class="badge" style="background: rgba(168,85,247,0.15); border-color: rgba(168,85,247,0.3); color: #c084fc;">
-          OTA: <span id="otaVersionText" style="margin-left:4px;">v1.2.4</span>
+        <!-- Cloud OTA Version Badge (Click to Update Immediately) -->
+        <div id="otaBadge" class="badge" onclick="sendUpdateFirmwareNow(0)" style="background: rgba(168,85,247,0.15); border-color: rgba(168,85,247,0.3); color: #c084fc; cursor: pointer;" title="Click to update firmware immediately on both nodes via Cloud OTA">
+          OTA: <span id="otaVersionText" style="margin-left:4px;">v1.2.6</span> ⚡
         </div>
         <!-- Local IP Link Pill (if user is on home network) -->
         <a id="localLink" href="http://192.168.29.125/" target="_blank" class="badge btn-secondary" style="color:var(--text-muted); text-decoration:none;" title="Open local node if on same home Wi-Fi">
@@ -1019,8 +1019,32 @@
           <button class="btn btn-secondary" onclick="sendTriggerSheetsCmd()">Log to Sheets (1-Min Slot)</button>
           <button class="btn btn-purple" onclick="sendCheckOtaCmd()">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
-            Check OTA Update
+            Check OTA
           </button>
+        </div>
+
+        <hr style="border: 0; border-top: 1px solid var(--card-border); margin: 1.25rem 0;">
+
+        <!-- Immediate Firmware Update Section -->
+        <div style="background: rgba(147, 51, 234, 0.08); border: 1px solid rgba(168, 85, 247, 0.3); border-radius: 10px; padding: 0.9rem 1.1rem; margin-bottom: 1.25rem;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.4rem; flex-wrap: wrap; gap: 0.5rem;">
+            <label style="margin: 0; font-weight: 700; color: #c084fc; font-size: 0.88rem;">⚡ Immediate Cloud OTA Firmware Flash</label>
+            <span style="font-size: 0.72rem; color: #a855f7; background: rgba(168, 85, 247, 0.15); padding: 2px 8px; border-radius: 6px; font-weight: 600;">BYPASS 15-MIN TIMER</span>
+          </div>
+          <p class="note-text" style="margin-bottom: 0.75rem; font-size: 0.78rem;">
+            Forces an immediate download of the newest firmware from GitHub Releases <code>latest</code> and flashes the ESP32 hardware right now.
+          </p>
+          <div class="btn-group">
+            <button class="btn" style="background: linear-gradient(135deg, #9333ea, #c026d3); color: white; font-weight: 700; border: none; box-shadow: 0 4px 15px rgba(147, 51, 234, 0.35);" onclick="sendUpdateFirmwareNow(0)" title="Force downloads and flashes newest firmware from GitHub Releases 'latest' on BOTH ESP32 nodes immediately">
+              ⚡ Update Both Nodes Immediately
+            </button>
+            <button class="btn" style="background: rgba(147, 51, 234, 0.2); border: 1px solid rgba(192, 38, 211, 0.4); color: #e9d5ff;" onclick="sendUpdateFirmwareNow(1)" title="Flashes Node 1 (Tap Head Pressure) immediately">
+              ⚡ Flash Node 1 (Pressure)
+            </button>
+            <button class="btn" style="background: rgba(147, 51, 234, 0.2); border: 1px solid rgba(192, 38, 211, 0.4); color: #e9d5ff;" onclick="sendUpdateFirmwareNow(2)" title="Flashes Node 2 (Overhead Ultrasonic) immediately">
+              ⚡ Flash Node 2 (Ultrasonic)
+            </button>
+          </div>
         </div>
 
         <hr style="border: 0; border-top: 1px solid var(--card-border); margin: 1.25rem 0;">
@@ -1461,6 +1485,24 @@
     function sendCheckOtaCmd() {
       publishCommand({ cmd: 'check_ota' });
       showToast('ESP32 checking GitHub for new OTA firmware...');
+    }
+
+    // Force Immediate Cloud OTA Firmware Flash
+    function sendUpdateFirmwareNow(nodeNum) {
+      const targetStr = nodeNum === 0 ? 'BOTH ESP32 Nodes' : (nodeNum === 1 ? 'Node 1 (Pressure Node)' : 'Node 2 (Ultrasonic Node)');
+      if (!confirm('⚡ Update firmware on ' + targetStr + ' immediately?\n\nThe ESP32 will contact GitHub Releases \'latest\', download the newest firmware binary, flash itself, and reboot.')) return;
+      
+      const cmdStr = nodeNum === 0 ? 'update_ota_both' : (nodeNum === 1 ? 'update_ota_node1' : 'update_ota_node2');
+      publishCommand({ cmd: cmdStr });
+      showToast('⚡ Immediate firmware update command sent to ' + targetStr + '!');
+      
+      // Also trigger local endpoint directly if user is on local home Wi-Fi network
+      if (nodeNum === 2 || nodeNum === 0) {
+        try { fetch('http://192.168.29.130/api/ota_update', { method: 'POST', mode: 'no-cors' }); } catch(e) {}
+      }
+      if (nodeNum === 1 || nodeNum === 0) {
+        try { fetch('http://192.168.29.125/api/ota_update?node=' + nodeNum, { method: 'POST', mode: 'no-cors' }); } catch(e) {}
+      }
     }
 
     // Remotely Reboot Node 1 or Node 2

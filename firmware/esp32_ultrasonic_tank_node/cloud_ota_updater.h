@@ -347,7 +347,7 @@ public:
             if (Update.isFinished()) {
                 Serial.println(F("\n==========================================================="));
                 Serial.println(F(" [AUTO-OTA] ✨ FIRMWARE UPDATE SUCCESSFUL!"));
-                Serial.printf(F(" Written: %d bytes. System will reboot in 2 seconds...\n"), written);
+                Serial.printf(" Written: %d bytes. System will reboot in 2 seconds...\n", written);
                 Serial.println(F("===========================================================\n"));
                 lastStatus = "Success! Rebooting...";
                 delay(2000);

@@ -128,6 +128,7 @@ void handleCalibrateApi();
 void handleSettingsApi();
 void handleManualLogApi();
 void handleOtaCheckApi();
+void handleOtaUpdateApi();
 void handleEventStartApi();
 void handleEventStopApi();
 void handleEventStatusApi();
@@ -204,6 +205,7 @@ void setup() {
   server.on("/api/settings", HTTP_POST, handleSettingsApi);
   server.on("/api/log_sheets", HTTP_POST, handleManualLogApi);
   server.on("/api/ota_check", HTTP_POST, handleOtaCheckApi);
+  server.on("/api/ota_update", HTTP_ANY, handleOtaUpdateApi);
   server.on("/api/event/start", HTTP_POST, handleEventStartApi);
   server.on("/api/event/stop", HTTP_POST, handleEventStopApi);
   server.on("/api/event/status", HTTP_GET, handleEventStatusApi);
@@ -345,6 +347,46 @@ void onMqttMessageReceived(char* topic, byte* payload, unsigned int length) {
   else if (cmd == "check_ota") {
     cloudOTA.checkAndUpdate(false);
     publishMqttStatus("OTA: " + cloudOTA.getStatus());
+  }
+  else if (cmd == "update_ota_node1" || cmd == "update_ota") {
+    publishMqttStatus("Node 1: Starting Immediate Cloud OTA...");
+    Serial.println(F("[MQTT-CMD] ⚡ Starting Immediate Cloud OTA Update on Node 1..."));
+    bool ok = cloudOTA.checkAndUpdate(true);
+    publishMqttStatus("Node 1 OTA: " + cloudOTA.getStatus());
+  }
+  else if (cmd == "update_ota_node2") {
+    publishMqttStatus("Forwarding immediate OTA to Node 2...");
+    Serial.println(F("[MQTT-CMD] ⚡ Forwarding immediate OTA update to Node 2..."));
+    HTTPClient httpNode2;
+    WiFiClient clientNode2;
+    httpNode2.begin(clientNode2, "http://192.168.29.130/api/ota_update");
+    httpNode2.setTimeout(4000);
+    int code = httpNode2.GET();
+    httpNode2.end();
+    if (code > 0) {
+      publishMqttStatus("Node 2 Immediate OTA Initiated!");
+    } else {
+      publishMqttStatus("Node 2 Unreachable (Offline or No Route)");
+    }
+  }
+  else if (cmd == "update_ota_both") {
+    publishMqttStatus("Starting Immediate Cloud OTA on Both Nodes...");
+    Serial.println(F("[MQTT-CMD] ⚡ Starting Immediate Cloud OTA on Both Nodes..."));
+    // 1. Trigger Node 2 first
+    HTTPClient httpNode2;
+    WiFiClient clientNode2;
+    httpNode2.begin(clientNode2, "http://192.168.29.130/api/ota_update");
+    httpNode2.setTimeout(4000);
+    int code2 = httpNode2.GET();
+    httpNode2.end();
+    if (code2 > 0) {
+      publishMqttStatus("Node 2 OTA Initiated! Now flashing Node 1...");
+    } else {
+      publishMqttStatus("Node 2 Unreachable. Proceeding with Node 1 OTA...");
+    }
+    // 2. Trigger Node 1
+    delay(500);
+    cloudOTA.checkAndUpdate(true);
   }
   else if (cmd == "reboot") {
     publishMqttStatus("Rebooting Node 1...");
@@ -1168,6 +1210,43 @@ void handleOtaCheckApi() {
   cloudOTA.checkAndUpdate(false);
   String json = "{\"status\":\"success\",\"message\":\"" + cloudOTA.getStatus() + "\"}";
   server.send(200, "application/json", json);
+}
+
+void handleOtaUpdateApi() {
+  int target = server.hasArg("node") ? server.arg("node").toInt() : 0;
+  Serial.printf("[HTTP] ⚡ Immediate Cloud OTA Update triggered (target node: %d)\n", target);
+
+  if (target == 2) {
+    // Forward to Node 2
+    HTTPClient httpNode2;
+    WiFiClient clientNode2;
+    httpNode2.begin(clientNode2, "http://192.168.29.130/api/ota_update");
+    httpNode2.setTimeout(4000);
+    int code = httpNode2.GET();
+    httpNode2.end();
+    if (code > 0) {
+      server.send(200, "application/json", "{\"status\":\"success\",\"message\":\"Node 2 (Ultrasonic) Immediate Cloud OTA Initiated!\"}");
+    } else {
+      server.send(500, "application/json", "{\"status\":\"error\",\"message\":\"Node 2 Unreachable (Offline or No Route)\"}");
+    }
+  } else if (target == 0) {
+    // Both nodes: Notify Node 2 first, then flash Node 1
+    HTTPClient httpNode2;
+    WiFiClient clientNode2;
+    httpNode2.begin(clientNode2, "http://192.168.29.130/api/ota_update");
+    httpNode2.setTimeout(4000);
+    httpNode2.GET();
+    httpNode2.end();
+
+    server.send(200, "application/json", "{\"status\":\"success\",\"message\":\"Immediate Cloud OTA Initiated on Both Nodes! Flashing in progress...\"}");
+    delay(300);
+    cloudOTA.checkAndUpdate(true);
+  } else {
+    // Node 1 only
+    server.send(200, "application/json", "{\"status\":\"success\",\"message\":\"Node 1 (Pressure) Immediate Cloud OTA Initiated! Flashing in progress...\"}");
+    delay(300);
+    cloudOTA.checkAndUpdate(true);
+  }
 }
 
 // =========================================================================

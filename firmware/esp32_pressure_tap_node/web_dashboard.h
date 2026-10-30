@@ -489,8 +489,8 @@ const char DASHBOARD_HTML[] PROGMEM = R"rawliteral(
           <span class="dot"></span>
           <span id="stateText">STATIC BASELINE</span>
         </div>
-        <div id="otaBadge" class="badge" style="background: rgba(168,85,247,0.15); border-color: rgba(168,85,247,0.3); color: #c084fc; font-weight: 600;">
-          OTA: <span id="otaModeText" style="margin-left:4px;">Auto 15m (v1.2.4)</span>
+        <div id="otaBadge" class="badge" onclick="triggerImmediateFirmwareUpdate(0)" style="background: rgba(168,85,247,0.15); border-color: rgba(168,85,247,0.3); color: #c084fc; font-weight: 600; cursor: pointer;" title="Click to update firmware immediately via Cloud OTA">
+          OTA: <span id="otaModeText" style="margin-left:4px;">Auto 15m (v1.2.6)</span> ⚡
         </div>
         <div class="badge" style="background: rgba(255,255,255,0.06); border-color: rgba(255,255,255,0.1); color: var(--text-muted);">
           NTP: <span id="clockTime" style="color:#fff; margin-left:4px;">--:--:--</span>
@@ -688,13 +688,33 @@ const char DASHBOARD_HTML[] PROGMEM = R"rawliteral(
             <div style="font-family:'JetBrains Mono'; color:#10b981; font-size:0.95rem;" id="otaStatusDetail">Up to date</div>
           </div>
         </div>
-        <div style="display: flex; gap: 0.75rem; flex-wrap: wrap;">
+        <div style="display: flex; gap: 0.75rem; flex-wrap: wrap; margin-bottom: 0.75rem;">
           <input type="password" id="inputGhToken" placeholder="Optional GitHub Token (PAT) for private repo" style="flex: 2; min-width: 250px;">
           <button class="btn btn-secondary" onclick="saveGithubToken()">Save Token</button>
-          <button class="btn btn-primary" onclick="triggerOtaCheckNow()">
+          <button class="btn btn-secondary" onclick="triggerOtaCheckNow()">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
-            Check Updates Now
+            Check Updates
           </button>
+        </div>
+        <div style="background: rgba(147, 51, 234, 0.08); border: 1px solid rgba(168, 85, 247, 0.25); border-radius: 10px; padding: 0.85rem 1rem;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.35rem; flex-wrap: wrap; gap: 0.5rem;">
+            <span style="font-weight: 700; color: #c084fc; font-size: 0.88rem;">⚡ Immediate Cloud OTA Firmware Flash</span>
+            <span style="font-size: 0.72rem; color: #a855f7; background: rgba(168, 85, 247, 0.15); padding: 2px 8px; border-radius: 6px; font-weight: 600;">BYPASS 15-MIN TIMER</span>
+          </div>
+          <p class="note-text" style="margin-bottom: 0.6rem; font-size: 0.75rem;">
+            Bypasses the 15-minute background polling interval. Force-downloads and flashes the newest release binary from GitHub immediately.
+          </p>
+          <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+            <button class="btn" style="background: linear-gradient(135deg, #9333ea, #c026d3); color: white; font-weight: 600; border: none; box-shadow: 0 4px 15px rgba(147, 51, 234, 0.35);" onclick="triggerImmediateFirmwareUpdate(0)">
+              ⚡ Update Both Nodes Immediately
+            </button>
+            <button class="btn btn-secondary" style="font-size: 0.8rem;" onclick="triggerImmediateFirmwareUpdate(1)">
+              ⚡ Flash Node 1 (Pressure)
+            </button>
+            <button class="btn btn-secondary" style="font-size: 0.8rem;" onclick="triggerImmediateFirmwareUpdate(2)">
+              ⚡ Flash Node 2 (Ultrasonic)
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -1075,6 +1095,21 @@ const char DASHBOARD_HTML[] PROGMEM = R"rawliteral(
         fetchStatus();
       } catch(e) {
         showToast("Error checking updates: " + e.message);
+      }
+    }
+
+    async function triggerImmediateFirmwareUpdate(nodeNum) {
+      const targetName = nodeNum === 0 ? 'BOTH nodes' : (nodeNum === 1 ? 'Node 1 (Pressure Node)' : 'Node 2 (Ultrasonic Node)');
+      if (!confirm('⚡ Update firmware on ' + targetName + ' immediately?\n\nThe ESP32 will contact GitHub Releases \'latest\', download the newest firmware binary, flash itself, and reboot.')) return;
+      
+      showToast('⚡ Contacting GitHub to flash ' + targetName + ' immediately...');
+      try {
+        const res = await fetch('/api/ota_update?node=' + nodeNum, { method: 'POST' });
+        const d = await res.json();
+        showToast(d.message || 'OTA update initiated!');
+        fetchStatus();
+      } catch(e) {
+        showToast('Error initiating OTA: ' + e.message);
       }
     }
 

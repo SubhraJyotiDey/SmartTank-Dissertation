@@ -49,12 +49,13 @@ private:
     // Rooftop background poller task running on Core 0 (Zero impact on Core 1 sampling)
     static void rooftopWorkerTask(void* pvParameters) {
         HighResEventRecorder* self = (HighResEventRecorder*)pvParameters;
+        int failedPolls = 0;
         while (true) {
             if (WiFi.status() == WL_CONNECTED) {
                 WiFiClient client;
-                client.setTimeout(250);
+                client.setTimeout(1000);
                 HTTPClient http;
-                http.setTimeout(250);
+                http.setTimeout(1000);
                 if (http.begin(client, self->rooftopApiUrl)) {
                     int code = http.GET();
                     if (code == HTTP_CODE_OK) {
@@ -70,22 +71,25 @@ private:
                             if (l >= 0.0f && l <= 100.0f) self->cachedRooftopLevel = l;
                         }
                         self->rooftopOnline = true;
+                        failedPolls = 0; // Reset fail counter on successful poll
                     } else {
-                        self->cachedRooftopDist = -1.0f;
-                        self->cachedRooftopLevel = -1.0f;
-                        self->rooftopOnline = false;
+                        failedPolls++;
                     }
                     http.end();
                 } else {
-                    self->cachedRooftopDist = -1.0f;
-                    self->cachedRooftopLevel = -1.0f;
-                    self->rooftopOnline = false;
+                    failedPolls++;
                 }
             } else {
+                failedPolls++;
+            }
+
+            // Only declare offline after 5 consecutive failed seconds (grace period to eliminate flickering)
+            if (failedPolls >= 5) {
                 self->cachedRooftopDist = -1.0f;
                 self->cachedRooftopLevel = -1.0f;
                 self->rooftopOnline = false;
             }
+
             vTaskDelay(pdMS_TO_TICKS(1000));
         }
     }
