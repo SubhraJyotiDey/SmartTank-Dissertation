@@ -64,6 +64,10 @@
 #define DEFAULT_TANK_DEPTH_CM   122.0f  // Height of water in tank when 100% full (122 cm)
 #define DEFAULT_TANK_CAPACITY_L 2000.0f // Overhead tank volume (Liters)
 
+// Ultrasonic Ground Truth Reference: Air gap distance from sensor face to water when tank is 100% full (Tank Full Scenario)
+#define DEFAULT_ULTRASONIC_FULL_DISTANCE_CM 11.0f  // Max water mark / tank full distance (cm)
+#define DEFAULT_SENSOR_OFFSET_CM            DEFAULT_ULTRASONIC_FULL_DISTANCE_CM
+
 // =========================================================================
 // 4. TAP OPEN / PRESSURE DROP COMPENSATION CONSTANTS
 // =========================================================================

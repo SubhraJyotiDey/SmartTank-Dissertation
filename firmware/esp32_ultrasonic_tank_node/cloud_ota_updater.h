@@ -258,7 +258,7 @@ public:
                 httpRedirect.end();
             }
             redirectClient.stop();
-            delay(150); // Allow TLS heap buffers to cleanly deallocate before opening download stream
+            delay(350); // Allow TLS heap buffers to cleanly deallocate before opening download stream
         }
 
         // Step 2: Download stream from storage endpoint

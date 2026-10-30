@@ -17,9 +17,10 @@
 // Total height of water column when tank is 100% full (122 cm)
 #define DEFAULT_TANK_DEPTH_CM   122.0f
 
-// Mounting offset: Distance from sensor face down to the 100% full water mark (cm)
-// Calibrated: 11.0 cm measured from sensor face to water surface when tank is 100% full
-#define DEFAULT_SENSOR_OFFSET_CM 11.0f
+// Ultrasonic Ground Truth Reference: Air gap distance from sensor face down to the 100% full water mark (cm)
+// Calibrated: 11.0 cm measured from sensor face to water surface when tank is 100% full (Tank Full Scenario)
+#define DEFAULT_SENSOR_OFFSET_CM            11.0f
+#define DEFAULT_ULTRASONIC_FULL_DISTANCE_CM DEFAULT_SENSOR_OFFSET_CM
 
 // Filter samples per measurement
 #define ULTRASONIC_SAMPLES      7

@@ -21,6 +21,7 @@
 #include <HTTPClient.h>
 #include <WiFiClientSecure.h>
 #include <SPIFFS.h>
+#include <Preferences.h>
 #include <time.h>
 #include <ArduinoOTA.h>
 #include <WebServer.h>
@@ -30,6 +31,9 @@
 // WebServer for local high-speed telemetry query by Pressure Node
 WebServer server(80);
 
+// NVS Persistent Storage
+Preferences preferences;
+
 // Automatic Cloud OTA Self-Updater (every 15 minutes)
 CloudOTAUpdater cloudOTA(FIRMWARE_VERSION, OTA_BIN_FILENAME, DEFAULT_GITHUB_OTA_TOKEN);
 
@@ -37,7 +41,7 @@ CloudOTAUpdater cloudOTA(FIRMWARE_VERSION, OTA_BIN_FILENAME, DEFAULT_GITHUB_OTA_
 // GLOBAL VARIABLES
 // =========================================================================
 float tankDepthCm        = DEFAULT_TANK_DEPTH_CM;
-float sensorOffsetCm     = DEFAULT_SENSOR_OFFSET_CM;
+float sensorOffsetCm     = DEFAULT_SENSOR_OFFSET_CM; // Air gap distance at 100% full (Tank Full Scenario)
 
 float measuredDistanceCm = 0.0f;
 float smoothedDistanceCm = -1.0f;   // Exponential Moving Average filtered distance
@@ -55,6 +59,8 @@ const char* OFFLINE_QUEUE_FILE = "/offline_ultrasonic.csv";
 // =========================================================================
 // FUNCTION DECLARATIONS
 // =========================================================================
+void loadSettings();
+void saveSettings();
 void initWiFi();
 void maintainWiFi();
 void initOTA();
@@ -71,6 +77,27 @@ bool postBulkJsonToGoogleSheets(const String& jsonPayload);
 int getOfflineQueueCount();
 
 // =========================================================================
+// SETTINGS PERSISTENCE (NVS)
+// =========================================================================
+void loadSettings() {
+  preferences.begin("smart_tank_us", true); // Read-only
+  sensorOffsetCm = preferences.getFloat("sensor_offset", DEFAULT_SENSOR_OFFSET_CM);
+  tankDepthCm    = preferences.getFloat("tank_depth", DEFAULT_TANK_DEPTH_CM);
+  preferences.end();
+  Serial.printf("[NVS] Loaded settings: Tank Full Dist (Offset) = %.1f cm | Tank Depth = %.1f cm\n",
+                sensorOffsetCm, tankDepthCm);
+}
+
+void saveSettings() {
+  preferences.begin("smart_tank_us", false); // Read-write
+  preferences.putFloat("sensor_offset", sensorOffsetCm);
+  preferences.putFloat("tank_depth", tankDepthCm);
+  preferences.end();
+  Serial.printf("[NVS] Settings saved: Tank Full Dist (Offset) = %.1f cm | Tank Depth = %.1f cm\n",
+                sensorOffsetCm, tankDepthCm);
+}
+
+// =========================================================================
 // SETUP
 // =========================================================================
 void setup() {
@@ -79,6 +106,9 @@ void setup() {
   Serial.println(F("\n==========================================================="));
   Serial.println(F(" Smart Tank: Ultrasonic Ground Truth Node (ESP32 #2)"));
   Serial.println(F("==========================================================="));
+
+  // Load persistent calibration and geometry parameters from Flash NVS
+  loadSettings();
 
   pinMode(PIN_TRIG, OUTPUT);
   pinMode(PIN_ECHO, INPUT);
@@ -104,8 +134,33 @@ void setup() {
     json += "\"water_height_cm\":" + String(waterHeightCm, 1) + ",";
     json += "\"level_pct\":" + String(waterLevelPct, 1) + ",";
     json += "\"offset_cm\":" + String(sensorOffsetCm, 1) + ",";
+    json += "\"us_full_dist\":" + String(sensorOffsetCm, 1) + ",";
     json += "\"depth_cm\":" + String(tankDepthCm, 1);
     json += "}";
+    server.send(200, "application/json", json);
+  });
+
+  // Settings configuration endpoint (allows setting tank full distance / offset and tank depth)
+  server.on("/api/settings", HTTP_ANY, []() {
+    bool changed = false;
+    if (server.hasArg("offset_cm")) {
+      sensorOffsetCm = server.arg("offset_cm").toFloat();
+      changed = true;
+    } else if (server.hasArg("us_full_dist")) {
+      sensorOffsetCm = server.arg("us_full_dist").toFloat();
+      changed = true;
+    }
+    if (server.hasArg("depth_cm")) {
+      tankDepthCm = server.arg("depth_cm").toFloat();
+      changed = true;
+    }
+    if (changed) {
+      saveSettings();
+      calculateGroundTruth();
+    }
+    String json = "{\"status\":\"ok\",\"offset_cm\":" + String(sensorOffsetCm, 1) +
+                  ",\"us_full_dist\":" + String(sensorOffsetCm, 1) +
+                  ",\"depth_cm\":" + String(tankDepthCm, 1) + "}";
     server.send(200, "application/json", json);
   });
 
