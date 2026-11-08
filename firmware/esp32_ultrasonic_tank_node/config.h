@@ -18,8 +18,8 @@
 #define DEFAULT_TANK_DEPTH_CM   122.0f
 
 // Ultrasonic Ground Truth Reference: Air gap distance from sensor face down to the 100% full water mark (cm)
-// Calibrated: 11.0 cm measured from sensor face to water surface when tank is 100% full (Tank Full Scenario)
-#define DEFAULT_SENSOR_OFFSET_CM            11.0f
+// Calibrated: 6.0 cm measured from sensor face to water surface when tank is 100% full (Tank Full Scenario)
+#define DEFAULT_SENSOR_OFFSET_CM            6.0f
 #define DEFAULT_ULTRASONIC_FULL_DISTANCE_CM DEFAULT_SENSOR_OFFSET_CM
 
 // Filter samples per measurement

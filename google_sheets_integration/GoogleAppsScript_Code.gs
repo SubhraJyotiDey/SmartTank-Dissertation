@@ -27,7 +27,7 @@ function onOpen() {
       .addItem('📈 Quick Plot Active Sheet Selection', 'plotActiveSheetSelection')
       .addSeparator()
       .addItem('📈 Plot Comparison Graph (Rows 2283 - 2654)', 'createComparisonChart2283_2654')
-      .addItem('🎯 Recalculate Ground Truth (11.0 cm = Full Tank)', 'recalculateUltrasonicGroundTruth2283_2654')
+      .addItem('🎯 Recalculate Ground Truth (6.0 cm = Full Tank)', 'recalculateUltrasonicGroundTruth2283_2654')
       .addItem('🚀 Run Both: Recalibrate & Plot (Rows 2283 - 2654)', 'runRecalibrateAndPlot2283_2654')
       .addSeparator()
       .addItem('⚙️ Custom Row & Sheet Prompt...', 'promptCustomComparisonChart')
@@ -64,11 +64,11 @@ function doGet(e) {
       .setMimeType(ContentService.MimeType.JSON);
   }
 
-  // Dashboard API: Recalculate Ground Truth with 11.0 cm full tank
+  // Dashboard API: Recalculate Ground Truth with 6.0 cm full tank
   if (e && e.parameter && e.parameter.action === "recalibrate") {
     var start = e.parameter.start ? parseInt(e.parameter.start, 10) : 2283;
     var end = e.parameter.end ? parseInt(e.parameter.end, 10) : 2654;
-    var offset = e.parameter.full_offset ? parseFloat(e.parameter.full_offset) : 11.0;
+    var offset = e.parameter.full_offset ? parseFloat(e.parameter.full_offset) : 6.0;
     var depth = e.parameter.tank_depth ? parseFloat(e.parameter.tank_depth) : 122.0;
     return ContentService.createTextOutput(JSON.stringify(recalculateUltrasonicGroundTruth(start, end, offset, depth)))
       .setMimeType(ContentService.MimeType.JSON);
@@ -184,7 +184,7 @@ function handleData(e) {
           newRow[11] = rec.hammer_delta_kpa !== undefined ? parseFloat(rec.hammer_delta_kpa).toFixed(2) : "";
         } else if (node === "ultrasonic") {
           var rawDist = rec.distance_cm !== undefined ? parseFloat(rec.distance_cm) : null;
-          var tankOffsetCm = rec.sensor_offset_cm ? parseFloat(rec.sensor_offset_cm) : 11.0; // 11.0 cm = Tank Full
+          var tankOffsetCm = rec.sensor_offset_cm ? parseFloat(rec.sensor_offset_cm) : 6.0; // 6.0 cm = Tank Full
           var depth = rec.tank_depth_cm ? parseFloat(rec.tank_depth_cm) : 122.0;
           var uLevel = rec.level_pct !== undefined ? parseFloat(rec.level_pct) : null;
 
@@ -211,7 +211,7 @@ function handleData(e) {
           if (rec.hammer_delta_kpa !== undefined) sheet.getRange(rowIndex, 12).setValue(parseFloat(rec.hammer_delta_kpa).toFixed(2));
         } else if (node === "ultrasonic") {
           var rawDist = rec.distance_cm !== undefined ? parseFloat(rec.distance_cm) : null;
-          var tankOffsetCm = rec.sensor_offset_cm ? parseFloat(rec.sensor_offset_cm) : 11.0;
+          var tankOffsetCm = rec.sensor_offset_cm ? parseFloat(rec.sensor_offset_cm) : 6.0;
           var depth = rec.tank_depth_cm ? parseFloat(rec.tank_depth_cm) : 122.0;
           var uLevel = rec.level_pct !== undefined ? parseFloat(rec.level_pct) : null;
 
@@ -579,7 +579,7 @@ function getLatestDashboardData() {
 }
 
 // =========================================================================
-// COMPARISON GRAPH & 11.0 CM ULTRASONIC CALIBRATION ENGINE
+// COMPARISON GRAPH & 6.0 CM ULTRASONIC CALIBRATION ENGINE
 // =========================================================================
 
 /**
@@ -597,10 +597,10 @@ function createComparisonChart1138_1474() {
 }
 
 /**
- * Menu Action: Recalculates Ultrasonic Ground Truth using 11.0 cm = 100% Full (Rows 2283 to 2654)
+ * Menu Action: Recalculates Ultrasonic Ground Truth using 6.0 cm = 100% Full (Rows 2283 to 2654)
  */
 function recalculateUltrasonicGroundTruth2283_2654() {
-  var res = recalculateUltrasonicGroundTruth(2283, 2654, 11.0, 122.0);
+  var res = recalculateUltrasonicGroundTruth(2283, 2654, 6.0, 122.0);
   try {
     SpreadsheetApp.getUi().alert("✅ Recalibration Complete!\n\n" + res.message);
   } catch(e) {}
@@ -611,15 +611,15 @@ function recalculateUltrasonicGroundTruth1138_1474() {
 }
 
 /**
- * Menu Action: Runs Both Recalibration (11.0 cm Full) and Plots Comparison Graph
+ * Menu Action: Runs Both Recalibration (6.0 cm Full) and Plots Comparison Graph
  */
 function runRecalibrateAndPlot2283_2654() {
-  var recRes = recalculateUltrasonicGroundTruth(2283, 2654, 11.0, 122.0);
+  var recRes = recalculateUltrasonicGroundTruth(2283, 2654, 6.0, 122.0);
   var chartRes = createComparisonChartForRange(2283, 2654);
   try {
     SpreadsheetApp.getUi().alert(
       "🎉 Calibration & Graph Successfully Completed!\n\n" +
-      "1. Calibrated " + (recRes.updatedCount || 0) + " rows using 11.0 cm as 100% full tank.\n" +
+      "1. Calibrated " + (recRes.updatedCount || 0) + " rows using 6.0 cm as 100% full tank.\n" +
       "2. Plotted comparison chart on 'WaterLevel_Synchronized_Logs' (Col P).\n" +
       "3. Created/Refreshed dedicated evaluation tab 'Comparison_2283_2654' with MAE & RMSE evaluation statistics!"
     );
@@ -754,7 +754,7 @@ function showCustomWaterLevelAnalysisDialog() {
     "  <div style='flex:1;'><label>End Row</label><input type='number' id='endRow' value='2654'></div>" +
     "</div>" +
     "<button class='btn btn-primary' onclick='runAction(\"plot\")'>📈 Plot Comparison Graph</button>" +
-    "<button class='btn btn-success' onclick='runAction(\"recal\")'>🎯 Recalculate Ground Truth (11.0 cm)</button>" +
+    "<button class='btn btn-success' onclick='runAction(\"recal\")'>🎯 Recalculate Ground Truth (6.0 cm)</button>" +
     "<button class='btn btn-purple' onclick='runAction(\"both\")'>🚀 Run Both (Recalibrate & Plot)</button>" +
     "<div id='status' class='status'></div>" +
     "</div>" +
@@ -798,9 +798,9 @@ function executeCustomAnalysisFromDialog(sheetName, startRow, endRow, action) {
   if (action === "plot") {
     return createComparisonChartForRange(startRow, endRow, sheetName);
   } else if (action === "recal") {
-    return recalculateUltrasonicGroundTruth(startRow, endRow, 11.0, 122.0, sheetName);
+    return recalculateUltrasonicGroundTruth(startRow, endRow, 6.0, 122.0, sheetName);
   } else if (action === "both") {
-    recalculateUltrasonicGroundTruth(startRow, endRow, 11.0, 122.0, sheetName);
+    recalculateUltrasonicGroundTruth(startRow, endRow, 6.0, 122.0, sheetName);
     return createComparisonChartForRange(startRow, endRow, sheetName);
   }
 }
@@ -889,7 +889,7 @@ function createComparisonChartForRange(startRow, endRow, targetSheetName) {
     })
     .setOption('series', {
       0: { labelInLegend: 'Predicted Level (%) [Pressure Node]', color: '#0284c7', lineWidth: 2 },
-      1: { labelInLegend: 'Ground Truth (%) [Ultrasonic (11.0cm Full)]', color: '#10b981', lineWidth: 2 }
+      1: { labelInLegend: 'Ground Truth (%) [Ultrasonic (6.0cm Full)]', color: '#10b981', lineWidth: 2 }
     })
     .setOption('legend', { position: 'top' })
     .setOption('width', 950)
@@ -936,7 +936,7 @@ function createOrUpdateAnalysisTab(mainSheet, startRow, endRow) {
   analysisSheet.getRange("B2").setValue("Rows " + startRow + " to " + endRow + " (" + (endRow - startRow + 1) + " minutes)");
 
   analysisSheet.getRange("C2").setValue("Tank Full Reference:").setFontWeight("bold");
-  analysisSheet.getRange("D2").setValue("11.0 cm (Distance at 100% Full)");
+  analysisSheet.getRange("D2").setValue("6.0 cm (Distance at 100% Full)");
 
   analysisSheet.getRange("E2").setValue("Tank Water Height:").setFontWeight("bold");
   analysisSheet.getRange("F2").setValue("122.0 cm");
@@ -1019,7 +1019,7 @@ function createOrUpdateAnalysisTab(mainSheet, startRow, endRow) {
     })
     .setOption('series', {
       0: { labelInLegend: 'Predicted Level (%) [Tap Node]', color: '#0284c7', lineWidth: 2 },
-      1: { labelInLegend: 'Ground Truth (%) [Ultrasonic (11.0cm Full)]', color: '#10b981', lineWidth: 2 }
+      1: { labelInLegend: 'Ground Truth (%) [Ultrasonic (6.0cm Full)]', color: '#10b981', lineWidth: 2 }
     })
     .setOption('legend', { position: 'top' })
     .setOption('width', 920)
@@ -1032,7 +1032,7 @@ function createOrUpdateAnalysisTab(mainSheet, startRow, endRow) {
 }
 
 /**
- * Recalculates Ultrasonic Ground Truth (%) using 11.0 cm as tank full baseline
+ * Recalculates Ultrasonic Ground Truth (%) using 6.0 cm as tank full baseline
  */
 function recalculateUltrasonicGroundTruth(startRow, endRow, fullTankOffsetCm, tankDepthCm, targetSheetName) {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -1042,7 +1042,7 @@ function recalculateUltrasonicGroundTruth(startRow, endRow, fullTankOffsetCm, ta
     sheet = ss.getActiveSheet();
   }
 
-  var fullOffset = (fullTankOffsetCm !== undefined && fullTankOffsetCm !== null) ? parseFloat(fullTankOffsetCm) : 11.0;
+  var fullOffset = (fullTankOffsetCm !== undefined && fullTankOffsetCm !== null) ? parseFloat(fullTankOffsetCm) : 6.0;
   var depth = (tankDepthCm !== undefined && tankDepthCm !== null) ? parseFloat(tankDepthCm) : 122.0;
 
   var lastRow = sheet.getLastRow();
@@ -1065,7 +1065,7 @@ function recalculateUltrasonicGroundTruth(startRow, endRow, fullTankOffsetCm, ta
     if (rawDistVal !== "" && rawDistVal !== null && !isNaN(parseFloat(rawDistVal))) {
       var dist = parseFloat(rawDistVal);
       // Effective water height:
-      // When dist = 11.0 cm (full), height = depth (100%)
+      // When dist = 6.0 cm (full), height = depth (100%)
       // When dist increases (water drops), height = depth - (dist - fullOffset)
       var waterHeight = depth - (dist - fullOffset);
       var clampedHeight = Math.max(0.0, Math.min(depth, waterHeight));
@@ -1338,16 +1338,16 @@ function renderDashboardHtml() {
         </div>
       </div>
 
-      <!-- Water Level Comparison & 11.0 cm Calibration Card -->
+      <!-- Water Level Comparison & 6.0 cm Calibration Card -->
       <div class="card" style="border-color: rgba(14, 165, 233, 0.35);">
         <div class="card-title">
           <span>Dissertation Evaluation (Rows 2283 - 2654)</span>
-          <span style="font-size: 0.72rem; color: #10b981; font-weight: 700; background: rgba(16,185,129,0.15); padding: 3px 8px; border-radius: 6px;">11.0 cm = FULL</span>
+          <span style="font-size: 0.72rem; color: #10b981; font-weight: 700; background: rgba(16,185,129,0.15); padding: 3px 8px; border-radius: 6px;">6.0 cm = FULL</span>
         </div>
         <p style="font-size: 0.8rem; color: var(--muted); margin-bottom: 0.75rem;">
-          Calibrate ultrasonic distance benchmark (11.0 cm full tank) and generate publication-quality comparison chart for rows 2283–2654.
+          Calibrate ultrasonic distance benchmark (6.0 cm full tank) and generate publication-quality comparison chart for rows 2283–2654.
         </p>
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; margin-bottom: 0.75rem;">
+        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0.5rem; margin-bottom: 0.75rem;">
           <div>
             <label style="font-size: 0.7rem; color: var(--muted); display: block; margin-bottom: 2px;">Start Row</label>
             <input type="number" id="plotStartRow" value="2283" style="padding: 6px 10px; border-radius: 6px;">
@@ -1356,10 +1356,14 @@ function renderDashboardHtml() {
             <label style="font-size: 0.7rem; color: var(--muted); display: block; margin-bottom: 2px;">End Row</label>
             <input type="number" id="plotEndRow" value="2654" style="padding: 6px 10px; border-radius: 6px;">
           </div>
+          <div>
+            <label style="font-size: 0.7rem; color: var(--muted); display: block; margin-bottom: 2px;">Full Dist (cm)</label>
+            <input type="number" step="0.1" id="plotFullOffset" value="6.0" style="padding: 6px 10px; border-radius: 6px;">
+          </div>
         </div>
         <div style="margin-top: 0.75rem;">
           <button class="btn btn-primary" onclick="recalibrateAndPlotWeb()" style="width: 100%; justify-content: center;">
-            🚀 Calibrate (11.0cm) & Plot Graph
+            🚀 Calibrate & Plot Graph
           </button>
         </div>
       </div>
@@ -1583,14 +1587,15 @@ function renderDashboardHtml() {
       }
     }
 
-    // Trigger 11.0 cm Recalibration & Plotting from Web Dashboard
+    // Trigger Recalibration & Plotting from Web Dashboard
     async function recalibrateAndPlotWeb() {
       let start = document.getElementById('plotStartRow').value || 2283;
       let end = document.getElementById('plotEndRow').value || 2654;
+      let fullOffset = document.getElementById('plotFullOffset').value || 6.0;
 
       try {
-        // Step 1: Recalibrate with 11.0 cm full mark and 122.0 cm tank depth
-        const recUrl = SCRIPT_URL + '?action=recalibrate&start=' + start + '&end=' + end + '&full_offset=11.0&tank_depth=122.0';
+        // Step 1: Recalibrate with specified full mark and 122.0 cm tank depth
+        const recUrl = SCRIPT_URL + '?action=recalibrate&start=' + start + '&end=' + end + '&full_offset=' + fullOffset + '&tank_depth=122.0';
         const recRes = await (await fetch(recUrl)).json();
 
         // Step 2: Plot comparison chart
@@ -1599,7 +1604,7 @@ function renderDashboardHtml() {
 
         alert(
           "🎉 Analysis & Chart Generated!\n\n" +
-          "1. Recalculated ground truth for rows " + start + " to " + end + " using 11.0 cm as 100% full tank.\n" +
+          "1. Recalculated ground truth for rows " + start + " to " + end + " using " + fullOffset + " cm as 100% full tank.\n" +
           "2. Embedded comparison chart plotted on 'WaterLevel_Synchronized_Logs' (Col P).\n" +
           "3. Created/Refreshed dedicated evaluation tab 'Comparison_" + start + "_" + end + "' with MAE, RMSE & dynamic formulas!"
         );

@@ -82,6 +82,9 @@ int getOfflineQueueCount();
 void loadSettings() {
   preferences.begin("smart_tank_us", true); // Read-only
   sensorOffsetCm = preferences.getFloat("sensor_offset", DEFAULT_SENSOR_OFFSET_CM);
+  if (sensorOffsetCm >= 10.5f && sensorOffsetCm <= 11.5f) {
+    sensorOffsetCm = DEFAULT_SENSOR_OFFSET_CM; // Update legacy 11cm default to 6cm
+  }
   tankDepthCm    = preferences.getFloat("tank_depth", DEFAULT_TANK_DEPTH_CM);
   preferences.end();
   Serial.printf("[NVS] Loaded settings: Tank Full Dist (Offset) = %.1f cm | Tank Depth = %.1f cm\n",
@@ -578,6 +581,7 @@ bool sendToGoogleSheets(const String& timestampStr) {
   url += "&distance_cm=" + String(measuredDistanceCm, 1);
   url += "&level_pct=" + String(waterLevelPct, 1);
   url += "&tank_depth_cm=" + String(tankDepthCm, 1);
+  url += "&sensor_offset_cm=" + String(sensorOffsetCm, 1);
 
   Serial.printf("[SHEETS] Uploading Ground Truth to: %s\n", url.c_str());
   bool success = false;

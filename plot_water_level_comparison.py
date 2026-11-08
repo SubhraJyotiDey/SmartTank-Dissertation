@@ -1,10 +1,10 @@
 """
 =============================================================================
 Dissertation Water Level Prediction Evaluation & Comparison Plotter
-Rows 2283 to 2654 | 11.0 cm Full Tank Ultrasonic Calibration | 122.0 cm Depth
+Rows 2283 to 2654 | 6.0 cm Full Tank Ultrasonic Calibration | 122.0 cm Depth
 =============================================================================
 This script loads data from Google Sheets (or CSV export) for rows 2283–2654,
-applies the calibrated 11.0 cm full-tank ultrasonic ground truth benchmark,
+applies the calibrated 6.0 cm full-tank ultrasonic ground truth benchmark,
 computes dissertation evaluation statistics (MAE, RMSE, R^2, Pearson r), and
 generates a publication-quality 300 DPI comparative figure for dissertation reports.
 """
@@ -19,7 +19,7 @@ import matplotlib.dates as mdates
 from datetime import datetime, timedelta
 
 # Calibration parameters
-DEFAULT_FULL_OFFSET_CM = 11.0   # Distance from sensor face to water at 100% full (air gap)
+DEFAULT_FULL_OFFSET_CM = 6.0    # Distance from sensor face to water at 100% full (air gap)
 DEFAULT_TANK_DEPTH_CM  = 122.0  # Usable water height (cm)
 DEFAULT_START_ROW      = 2283
 DEFAULT_END_ROW        = 2654
@@ -33,7 +33,7 @@ def calculate_ultrasonic_level(distance_cm, full_offset=DEFAULT_FULL_OFFSET_CM, 
     height = tank_depth - (distance_cm - full_offset)
     return np.clip((height / tank_depth) * 100.0, 0.0, 100.0)
 
-def generate_sample_dissertation_dataset(start_row=2283, end_row=2654):
+def generate_sample_dissertation_dataset(start_row=2283, end_row=2654, full_offset=DEFAULT_FULL_OFFSET_CM, tank_depth=DEFAULT_TANK_DEPTH_CM):
     """
     Generates realistic 1-minute dual-node synchronized telemetry for rows 2283 to 2654 (372 minutes = 6.2 hours).
     Covers the experimental observation run on 2026-10-28 from 07:18 to 13:29 IST.
@@ -91,7 +91,7 @@ def generate_sample_dissertation_dataset(start_row=2283, end_row=2654):
     np.random.seed(42)
     ultrasonic_dist_cm += np.random.normal(0, 0.32, num_samples)
 
-    # Ultrasonic ground truth % calibrated with 11.0 cm full mark and 122.0 cm depth:
+    # Ultrasonic ground truth % calibrated with 6.0 cm full mark and 122.0 cm depth:
     ultrasonic_ground_truth_pct = calculate_ultrasonic_level(
         ultrasonic_dist_cm, full_offset=DEFAULT_FULL_OFFSET_CM, tank_depth=DEFAULT_TANK_DEPTH_CM
     )
@@ -125,7 +125,7 @@ def generate_sample_dissertation_dataset(start_row=2283, end_row=2654):
     })
     return df
 
-def load_data(csv_path=None, start_row=DEFAULT_START_ROW, end_row=DEFAULT_END_ROW):
+def load_data(csv_path=None, start_row=DEFAULT_START_ROW, end_row=DEFAULT_END_ROW, full_offset=DEFAULT_FULL_OFFSET_CM, tank_depth=DEFAULT_TANK_DEPTH_CM):
     """Loads dataset from CSV if available, otherwise generates benchmark dataset."""
     if not csv_path:
         # Check current directory for any exported CSV file
@@ -181,7 +181,7 @@ def load_data(csv_path=None, start_row=DEFAULT_START_ROW, end_row=DEFAULT_END_RO
 def plot_water_level_comparison(df, output_png=None):
     """
     Generates a 3-panel publication-grade evaluation figure:
-    1. Time Series: Pressure Prediction vs Ultrasonic Ground Truth (11.0 cm full baseline, 122.0 cm depth)
+    1. Time Series: Pressure Prediction vs Ultrasonic Ground Truth (6.0 cm full baseline, 122.0 cm depth)
     2. Residual Error Plot: Delta % = Predicted - Ground Truth with confidence bounds
     3. Correlation Scatter Plot: Predicted vs Measured with R^2 and linear regression fit
     """
@@ -351,8 +351,10 @@ if __name__ == "__main__":
     parser.add_argument("--csv", type=str, default=None, help="Path to Google Sheets CSV export")
     parser.add_argument("--start", type=int, default=DEFAULT_START_ROW, help="Start row (default 2283)")
     parser.add_argument("--end", type=int, default=DEFAULT_END_ROW, help="End row (default 2654)")
+    parser.add_argument("--full-distance", "--full-offset", type=float, default=DEFAULT_FULL_OFFSET_CM, help="Ultrasound distance at 100% full tank / max water level air gap (default: 6.0 cm)")
+    parser.add_argument("--tank-depth", type=float, default=DEFAULT_TANK_DEPTH_CM, help="Tank depth (default: 122.0 cm)")
     parser.add_argument("--output", type=str, default="water_level_comparison_rows_2283_2654.png", help="Output PNG path")
     args = parser.parse_args()
 
-    data = load_data(args.csv, args.start, args.end)
+    data = load_data(args.csv, args.start, args.end, full_offset=args.full_distance, tank_depth=args.tank_depth)
     plot_water_level_comparison(data, args.output)

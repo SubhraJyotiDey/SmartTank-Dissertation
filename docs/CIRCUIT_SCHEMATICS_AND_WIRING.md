@@ -95,10 +95,10 @@ This document details the exact electrical connections, protection circuits, and
 * **Sensor:** Waterproof **JSN-SR04T / AJ-SR04M** or **HC-SR04**.
 * **Operating Voltage:** $5\text{V}$ DC (from ESP32 `VIN`).
 * **Tank Usable Height:** **`122.0 cm`**
-* **Tank Full Reference Offset:** **`11.0 cm`** (air gap from sensor face to water surface when tank is 100% full).
+* **Tank Full Reference Offset:** **`6.0 cm`** (air gap from sensor face to water surface when tank is 100% full).
 * **Physical Level Calculation:**
-  $$\text{Water Height (cm)} = 122.0 - (\text{Distance}_{\text{measured}} - 11.0)$$
-  $$\text{Level (\%)} = \left(1 - \frac{\text{Distance}_{\text{measured}} - 11.0}{122.0}\right) \times 100\%$$
+  $$\text{Water Height (cm)} = 122.0 - (\text{Distance}_{\text{measured}} - 6.0)$$
+  $$\text{Level (\%)} = \left(1 - \frac{\text{Distance}_{\text{measured}} - 6.0}{122.0}\right) \times 100\%$$
 
 ### 2.2 Echo Pin Protection
 When powered with $5\text{V}$, ultrasonic sensors output an `ECHO` signal of $5\text{V}$. A simple 2-resistor divider ($1\text{ k}\Omega / 2\text{ k}\Omega$) steps down the ECHO pulse to $\approx 3.3\text{V}$ for ESP32 GPIO 18.

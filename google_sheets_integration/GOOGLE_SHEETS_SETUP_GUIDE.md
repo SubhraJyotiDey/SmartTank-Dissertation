@@ -71,17 +71,17 @@ Both readings will be aligned in the **same row** under the matching 1-minute ti
 
 ---
 
-## Step 5: Plotting Comparison Graph (Rows 2283 to 2654) & 11.0 cm Full Calibration
+## Step 5: Plotting Comparison Graph (Rows 2283 to 2654) & 6.0 cm Full Calibration
 
 When evaluating model predictions against ultrasound ground reality for your dissertation (rows 2283 to 2654):
 
 ### Physical Baseline:
-- **Tank Full Distance**: **`11.0 cm`** (air gap measured from the ultrasound sensor face down to the water surface when the tank is at maximum 100% full capacity).
+- **Tank Full Distance**: **`6.0 cm`** (air gap measured from the ultrasound sensor face down to the water surface when the tank is at maximum 100% full capacity).
 - **Tank Depth**: **`122.0 cm`** (usable water column height).
 - **Physical Water Height**:
-  $$\text{Height (cm)} = 122.0 - (\text{Distance}_{\text{measured}} - 11.0)$$
+  $$\text{Height (cm)} = 122.0 - (\text{Distance}_{\text{measured}} - 6.0)$$
 - **Ground Truth Water Level (%)**:
-  $$\text{Level (\%)} = \left(\frac{122.0 - (\text{Distance}_{\text{measured}} - 11.0)}{122.0}\right) \times 100\% = \left(1 - \frac{\text{Distance}_{\text{measured}} - 11.0}{122.0}\right) \times 100\%$$
+  $$\text{Level (\%)} = \left(\frac{122.0 - (\text{Distance}_{\text{measured}} - 6.0)}{122.0}\right) \times 100\% = \left(1 - \frac{\text{Distance}_{\text{measured}} - 6.0}{122.0}\right) \times 100\%$$
 
 ---
 
@@ -90,9 +90,9 @@ When evaluating model predictions against ultrasound ground reality for your dis
 2. In the top Google Sheets menu bar, click the custom menu:
    **`📊 Water Level Analysis`**
 3. Click:
-   - **`🚀 Run Both: Recalibrate & Plot Graph (Rows 2283 - 2654)`** (or individually: **`🎯 Recalculate Ground Truth (11.0 cm = Full Tank)`** then **`📈 Plot Comparison Graph (Rows 2283 - 2654)`**).
+   - **`🚀 Run Both: Recalibrate & Plot Graph (Rows 2283 - 2654)`** (or individually: **`🎯 Recalculate Ground Truth (6.0 cm = Full Tank)`** then **`📈 Plot Comparison Graph (Rows 2283 - 2654)`**).
 4. Google Sheets will automatically:
-   - Recalculate all ultrasonic ground truth % values in **Column H** using 11.0 cm as full tank.
+   - Recalculate all ultrasonic ground truth % values in **Column H** using 6.0 cm as full tank.
    - Update Absolute Error $\Delta$ in **Column I** and Depth Error in **Column J**.
    - Embed a line comparison chart at **Column P** on `WaterLevel_Synchronized_Logs`.
    - Create a dedicated analysis tab: **`Comparison_2283_2654`** containing:
@@ -106,8 +106,8 @@ When evaluating model predictions against ultrasound ground reality for your dis
 ### Method 2: One-Click via Cloud Web Dashboard
 1. Open your deployed Web App URL in your browser.
 2. Scroll to the **Dissertation Evaluation (Rows 2283 - 2654)** card.
-3. Verify Start Row = `2283` and End Row = `2654`.
-4. Click **🚀 Calibrate (11.0cm) & Plot Graph**.
+3. Verify Start Row = `2283`, End Row = `2654`, and Full Dist = `6.0`.
+4. Click **🚀 Calibrate & Plot Graph**.
 
 ---
 
@@ -115,7 +115,7 @@ When evaluating model predictions against ultrasound ground reality for your dis
 If you want to apply or inspect the exact formula in Google Sheets cells:
 1. **Ultrasonic Ground Truth (%)** (Column H, Row 2283):
    ```excel
-   =IF(ISBLANK(G2283), "", MAX(0, MIN(100, ROUND((1 - (G2283 - 11.0) / 122) * 100, 1))))
+   =IF(ISBLANK(G2283), "", MAX(0, MIN(100, ROUND((1 - (G2283 - 6.0) / 122) * 100, 1))))
    ```
    *Drag down from H2283 to H2654.*
 2. **Absolute Error Δ (%)** (Column I, Row 2283):
