@@ -465,7 +465,7 @@ const char DASHBOARD_HTML[] PROGMEM = R"rawliteral(
       opacity: 1;
     }
 
-    /* Pump Relay Control Center Styles (PIN 7431 Guarded) */
+    /* Pump Relay Control Center Styles (PIN Guarded) */
     .pump-card {
       border: 1px solid rgba(14, 165, 233, 0.4) !important;
       box-shadow: 0 0 35px rgba(14, 165, 233, 0.12) !important;
@@ -730,7 +730,7 @@ const char DASHBOARD_HTML[] PROGMEM = R"rawliteral(
       </div>
     </div>
 
-    <!-- Node 3 High-Power Pump Relay Controller (PIN 7431 Guarded) -->
+    <!-- Node 3 High-Power Pump Relay Controller (PIN Guarded) -->
     <div class="card pump-card" id="pumpControlCard">
       <div class="card-title">
         <div style="display: flex; align-items: center; gap: 0.65rem;">
@@ -748,7 +748,7 @@ const char DASHBOARD_HTML[] PROGMEM = R"rawliteral(
             <span id="pumpStatusBadgeText">PUMP OFF (STANDBY)</span>
           </span>
           <span class="badge" style="background: rgba(234, 179, 8, 0.15); border-color: rgba(234, 179, 8, 0.35); color: #facc15; font-weight: 600;">
-            🔒 PIN: 7431
+            🔒 PIN Protected
           </span>
         </div>
       </div>
@@ -766,7 +766,7 @@ const char DASHBOARD_HTML[] PROGMEM = R"rawliteral(
           </div>
 
           <div style="display: flex; align-items: center; gap: 1.25rem; margin: 0.75rem 0;">
-            <label class="pump-toggle-switch" title="Toggle Pump (Requires PIN 7431)">
+            <label class="pump-toggle-switch" title="Toggle Pump (Security PIN Required)">
               <input type="checkbox" id="pumpToggleSwitch" onchange="onPumpSwitchChanged(this)">
               <span class="pump-toggle-slider">
                 <span class="pump-slider-knob"></span>
@@ -794,13 +794,13 @@ const char DASHBOARD_HTML[] PROGMEM = R"rawliteral(
             <span style="font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); font-weight: 600;">
               🔑 Security Authorization PIN
             </span>
-            <span style="font-size: 0.72rem; color: #38bdf8; font-family:'JetBrains Mono';">PIN: 7431</span>
+            <span style="font-size: 0.72rem; color: #94a3b8; font-family:'JetBrains Mono';">Restricted Access</span>
           </label>
 
           <div class="pin-input-group">
             <div class="pin-input-wrap" id="pinInputWrap">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color: #64748b; margin-right: 4px; flex-shrink: 0;"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-              <input type="password" id="pumpPinInput" maxlength="8" placeholder="Enter PIN 7431" autocomplete="off" oninput="clearPinError()" onkeydown="if(event.key==='Enter') triggerPumpPinAction(true)">
+              <input type="password" id="pumpPinInput" maxlength="8" placeholder="Enter Security PIN..." autocomplete="off" oninput="clearPinError()" onkeydown="if(event.key==='Enter') triggerPumpPinAction(true)">
               <button type="button" class="pin-eye-btn" onclick="togglePinVisibility()" title="Show/Hide PIN">👁️</button>
             </div>
           </div>
@@ -1286,9 +1286,17 @@ const char DASHBOARD_HTML[] PROGMEM = R"rawliteral(
     }
 
     // =========================================================================
-    // Node 3 Pump Relay Controller (PIN: 7431 Guarded)
+    // Node 3 Pump Relay Controller (Security PIN Guarded)
     // =========================================================================
-    const PUMP_SECURITY_PIN = '7431';
+    function checkPumpAuthPin(pin) {
+      if (!pin) return false;
+      let h = 0x811c9dc5;
+      for (let i = 0; i < pin.length; i++) {
+        h ^= pin.charCodeAt(i);
+        h = Math.imul(h, 0x01000193);
+      }
+      return (h >>> 0).toString(16) === '4556c8da'; // Hash of authorized security PIN
+    }
 
     function updatePumpStatusUI(isPumpOn, isLockout) {
       const toggle = document.getElementById('pumpToggleSwitch');
@@ -1353,7 +1361,7 @@ const char DASHBOARD_HTML[] PROGMEM = R"rawliteral(
 
       if (!enteredPin) {
         if (errEl) {
-          errEl.innerText = '⚠️ Security PIN required! Enter 7431 to toggle pump.';
+          errEl.innerText = '⚠️ Security PIN required to control pump.';
           errEl.style.display = 'block';
           errEl.style.color = '#f59e0b';
         }
@@ -1362,13 +1370,13 @@ const char DASHBOARD_HTML[] PROGMEM = R"rawliteral(
           setTimeout(() => pinWrap.classList.remove('pin-shake'), 500);
         }
         if (pinInput) pinInput.focus();
-        showToast('⚠️ PIN Required: Enter 7431 to control pump');
+        showToast('⚠️ Security PIN required');
         return false;
       }
 
-      if (enteredPin !== PUMP_SECURITY_PIN) {
+      if (!checkPumpAuthPin(enteredPin)) {
         if (errEl) {
-          errEl.innerText = '❌ Access Denied: Incorrect PIN! (Password 7431 required)';
+          errEl.innerText = '❌ Access Denied: Incorrect Security PIN!';
           errEl.style.display = 'block';
           errEl.style.color = '#f43f5e';
         }
@@ -1377,12 +1385,12 @@ const char DASHBOARD_HTML[] PROGMEM = R"rawliteral(
           setTimeout(() => pinWrap.classList.remove('pin-shake'), 500);
         }
         if (pinInput) pinInput.focus();
-        showToast('❌ Access Denied: Incorrect PIN (7431 required)');
+        showToast('❌ Access Denied: Incorrect PIN');
         return false;
       }
 
       if (errEl) {
-        errEl.innerText = '✅ PIN 7431 Authorized!';
+        errEl.innerText = '✅ Authorization Verified';
         errEl.style.display = 'block';
         errEl.style.color = '#10b981';
       }
@@ -1412,7 +1420,7 @@ const char DASHBOARD_HTML[] PROGMEM = R"rawliteral(
         const res = await fetch('/api/pump?state=' + targetState);
         const data = await res.json();
         if (res.ok) {
-          showToast(targetState === 1 ? '⚡ Dispatched PUMP START command (PIN 7431 Verified)' : '🛑 Dispatched PUMP STOP command (PIN 7431 Verified)');
+          showToast(targetState === 1 ? '⚡ Dispatched PUMP START command' : '🛑 Dispatched PUMP STOP command');
           fetchStatus();
         } else {
           showToast('Pump Command Rejected: ' + (data.reason || 'Safety Lockout'));
@@ -1433,7 +1441,7 @@ const char DASHBOARD_HTML[] PROGMEM = R"rawliteral(
         const res = await fetch('/api/pump?state=' + (turnOn ? 1 : 0));
         const data = await res.json();
         if (res.ok) {
-          showToast(turnOn ? '⚡ Dispatched PUMP START command (PIN 7431 Verified)' : '🛑 Dispatched PUMP STOP command (PIN 7431 Verified)');
+          showToast(turnOn ? '⚡ Dispatched PUMP START command' : '🛑 Dispatched PUMP STOP command');
           fetchStatus();
         } else {
           showToast('Pump Command Rejected: ' + (data.reason || 'Safety Lockout'));
