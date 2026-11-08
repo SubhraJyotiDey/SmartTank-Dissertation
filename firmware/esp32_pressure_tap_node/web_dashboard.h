@@ -464,6 +464,150 @@ const char DASHBOARD_HTML[] PROGMEM = R"rawliteral(
       transform: translateY(0);
       opacity: 1;
     }
+
+    /* Pump Relay Control Center Styles (PIN 7431 Guarded) */
+    .pump-card {
+      border: 1px solid rgba(14, 165, 233, 0.4) !important;
+      box-shadow: 0 0 35px rgba(14, 165, 233, 0.12) !important;
+      margin-bottom: 1.5rem !important;
+      background: linear-gradient(135deg, rgba(15, 23, 42, 0.85) 0%, rgba(12, 74, 110, 0.22) 100%) !important;
+    }
+    .pump-icon-halo {
+      width: 34px;
+      height: 34px;
+      border-radius: 9px;
+      background: rgba(14, 165, 233, 0.15);
+      border: 1px solid rgba(14, 165, 233, 0.35);
+      color: #38bdf8;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .pump-control-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1.25rem;
+      align-items: stretch;
+    }
+    @media (max-width: 820px) {
+      .pump-control-grid { grid-template-columns: 1fr; }
+    }
+    .pump-switch-box {
+      background: rgba(0, 0, 0, 0.4);
+      border: 1px solid var(--card-border);
+      border-radius: 14px;
+      padding: 1.2rem;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+    }
+    .pump-pin-box {
+      background: rgba(0, 0, 0, 0.4);
+      border: 1px solid var(--card-border);
+      border-radius: 14px;
+      padding: 1.2rem;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+    }
+    .pump-toggle-switch {
+      position: relative;
+      display: inline-block;
+      width: 76px;
+      height: 40px;
+      flex-shrink: 0;
+      cursor: pointer;
+    }
+    .pump-toggle-switch input { opacity: 0; width: 0; height: 0; }
+    .pump-toggle-slider {
+      position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+      background-color: #1e293b;
+      border: 2px solid rgba(255, 255, 255, 0.2);
+      border-radius: 40px;
+      transition: all 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    .pump-slider-knob {
+      position: absolute; height: 28px; width: 28px; left: 4px; bottom: 4px;
+      background-color: #94a3b8;
+      border-radius: 50%;
+      transition: all 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
+    }
+    .pump-toggle-switch input:checked + .pump-toggle-slider {
+      background: linear-gradient(135deg, #10b981 0%, #06b6d4 100%);
+      border-color: #34d399;
+      box-shadow: 0 0 22px rgba(16, 185, 129, 0.45);
+    }
+    .pump-toggle-switch input:checked + .pump-toggle-slider .pump-slider-knob {
+      transform: translateX(36px);
+      background-color: #ffffff;
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
+    }
+    .badge-pump-on {
+      background: rgba(16, 185, 129, 0.2) !important;
+      border-color: rgba(16, 185, 129, 0.45) !important;
+      color: #34d399 !important;
+      box-shadow: 0 0 12px rgba(16, 185, 129, 0.25);
+    }
+    .badge-pump-off {
+      background: rgba(100, 116, 139, 0.2) !important;
+      border-color: rgba(100, 116, 139, 0.4) !important;
+      color: #94a3b8 !important;
+    }
+    .badge-pump-lock {
+      background: rgba(245, 158, 11, 0.2) !important;
+      border-color: rgba(245, 158, 11, 0.45) !important;
+      color: #fbbf24 !important;
+    }
+    .pin-input-wrap {
+      display: flex;
+      align-items: center;
+      background: rgba(15, 23, 42, 0.85);
+      border: 1px solid var(--card-border);
+      border-radius: 10px;
+      padding: 0.15rem 0.65rem;
+      transition: all 0.2s;
+    }
+    .pin-input-wrap:focus-within {
+      border-color: var(--accent-cyan);
+      box-shadow: 0 0 12px rgba(56, 189, 248, 0.3);
+    }
+    .pin-input-wrap input {
+      border: none !important;
+      background: transparent !important;
+      padding: 0.55rem 0.6rem !important;
+      font-size: 1.05rem !important;
+      font-family: 'JetBrains Mono', monospace !important;
+      letter-spacing: 0.22em;
+      color: #ffffff !important;
+      outline: none;
+      flex: 1;
+    }
+    .pin-eye-btn {
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      cursor: pointer;
+      font-size: 1rem;
+      padding: 0.2rem 0.4rem;
+    }
+    .pin-shake {
+      animation: pinShakeAnim 0.5s ease-in-out;
+      border-color: #ef4444 !important;
+      box-shadow: 0 0 18px rgba(239, 68, 68, 0.45) !important;
+    }
+    @keyframes pinShakeAnim {
+      0%, 100% { transform: translateX(0); }
+      20%, 60% { transform: translateX(-8px); }
+      40%, 80% { transform: translateX(8px); }
+    }
+    .pin-feedback {
+      font-size: 0.78rem;
+      font-weight: 600;
+      margin-top: 6px;
+      min-height: 18px;
+      transition: all 0.2s;
+    }
   </style>
 </head>
 <body>
@@ -493,12 +637,12 @@ const char DASHBOARD_HTML[] PROGMEM = R"rawliteral(
           <span id="stateText">STATIC BASELINE</span>
         </div>
         <div id="otaBadge" class="badge" onclick="triggerImmediateFirmwareUpdate(0)" style="background: rgba(168,85,247,0.15); border-color: rgba(168,85,247,0.3); color: #c084fc; font-weight: 600; cursor: pointer;" title="Click to update firmware immediately via Cloud OTA">
-          OTA: <span id="otaModeText" style="margin-left:4px;">Auto 15m (v1.2.6)</span> ⚡
+          OTA: <span id="otaModeText" style="margin-left:4px;">Auto 15m (v1.2.7)</span> ⚡
         </div>
         <div class="badge" style="background: rgba(255,255,255,0.06); border-color: rgba(255,255,255,0.1); color: var(--text-muted);">
           NTP: <span id="clockTime" style="color:#fff; margin-left:4px;">--:--:--</span>
         </div>
-        <a href="https://subhrajyotidey.github.io/smarttank-dashboard/" target="_blank" class="badge" style="background: rgba(14,165,233,0.15); border-color: rgba(14,165,233,0.3); color: #38bdf8; text-decoration:none;" title="Open Global Cloud Dashboard (accessible anywhere in the world)">
+        <a href="https://subhrajyotidey.github.io/SmartTank-Dissertation/" target="_blank" class="badge" style="background: rgba(14,165,233,0.15); border-color: rgba(14,165,233,0.3); color: #38bdf8; text-decoration:none;" title="Open Global Cloud Dashboard on GitHub Pages">
           🌐 Global Cloud Dashboard ↗
         </a>
       </div>
@@ -582,6 +726,98 @@ const char DASHBOARD_HTML[] PROGMEM = R"rawliteral(
 
         <div class="chart-container">
           <canvas id="pressureChart"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <!-- Node 3 High-Power Pump Relay Controller (PIN 7431 Guarded) -->
+    <div class="card pump-card" id="pumpControlCard">
+      <div class="card-title">
+        <div style="display: flex; align-items: center; gap: 0.65rem;">
+          <div class="pump-icon-halo">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/>
+              <circle cx="12" cy="12" r="4"/>
+            </svg>
+          </div>
+          <span style="color: #ffffff; font-weight: 700; font-size: 1.05rem;">Pump Relay Control Center (Node 3 • JQX-15F 30A)</span>
+        </div>
+        <div style="display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;">
+          <span id="pumpStatusBadge" class="badge badge-pump-off">
+            <span class="dot"></span>
+            <span id="pumpStatusBadgeText">PUMP OFF (STANDBY)</span>
+          </span>
+          <span class="badge" style="background: rgba(234, 179, 8, 0.15); border-color: rgba(234, 179, 8, 0.35); color: #facc15; font-weight: 600;">
+            🔒 PIN: 7431
+          </span>
+        </div>
+      </div>
+
+      <p class="note-text" style="margin-bottom: 1.25rem;">
+        Direct bidirectional local control over Node 3 electromechanical actuator. Operates through high-speed ESP-NOW mesh with 10s anti-chatter protection and 35-minute autonomous thermal/runtime safety watchdog.
+      </p>
+
+      <div class="pump-control-grid">
+        <!-- Switch & Status Column -->
+        <div class="pump-switch-box">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 0.5rem;">
+            <span style="font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); font-weight: 600;">Relay Power Switch</span>
+            <span id="pumpStateSubtext" style="font-size: 0.72rem; color: #38bdf8; font-family:'JetBrains Mono';">PIN Required</span>
+          </div>
+
+          <div style="display: flex; align-items: center; gap: 1.25rem; margin: 0.75rem 0;">
+            <label class="pump-toggle-switch" title="Toggle Pump (Requires PIN 7431)">
+              <input type="checkbox" id="pumpToggleSwitch" onchange="onPumpSwitchChanged(this)">
+              <span class="pump-toggle-slider">
+                <span class="pump-slider-knob"></span>
+              </span>
+            </label>
+
+            <div>
+              <div id="pumpStateHeading" style="font-size: 1.25rem; font-weight: 800; font-family:'JetBrains Mono', monospace; color: #94a3b8; letter-spacing: 0.04em;">
+                OFFLINE / STOPPED
+              </div>
+              <div id="pumpLockoutNotice" style="display:none; color: #f59e0b; font-size: 0.75rem; margin-top: 2px;">
+                ⚠️ Safety Cooldown Active: Wait before restarting
+              </div>
+            </div>
+          </div>
+
+          <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: auto; padding-top: 0.5rem; border-top: 1px solid rgba(255,255,255,0.06);">
+            Protected by anti-chatter deadband (10s minimum between opposing toggles).
+          </div>
+        </div>
+
+        <!-- Security Password & Action Column -->
+        <div class="pump-pin-box">
+          <label style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.4rem;">
+            <span style="font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); font-weight: 600;">
+              🔑 Security Authorization PIN
+            </span>
+            <span style="font-size: 0.72rem; color: #38bdf8; font-family:'JetBrains Mono';">PIN: 7431</span>
+          </label>
+
+          <div class="pin-input-group">
+            <div class="pin-input-wrap" id="pinInputWrap">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color: #64748b; margin-right: 4px; flex-shrink: 0;"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+              <input type="password" id="pumpPinInput" maxlength="8" placeholder="Enter PIN 7431" autocomplete="off" oninput="clearPinError()" onkeydown="if(event.key==='Enter') triggerPumpPinAction(true)">
+              <button type="button" class="pin-eye-btn" onclick="togglePinVisibility()" title="Show/Hide PIN">👁️</button>
+            </div>
+          </div>
+
+          <div id="pinErrorMsg" class="pin-feedback" style="display: none; color: #f43f5e;"></div>
+
+          <!-- Quick Action Buttons -->
+          <div class="btn-group" style="margin-top: 0.75rem;">
+            <button class="btn btn-success" style="flex: 1; display:flex; align-items:center; justify-content:center; gap:0.4rem;" onclick="triggerPumpPinAction(true)">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+              Turn ON Pump
+            </button>
+            <button class="btn btn-danger" style="flex: 1; display:flex; align-items:center; justify-content:center; gap:0.4rem;" onclick="triggerPumpPinAction(false)">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="1"/></svg>
+              Turn OFF Pump
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -982,6 +1218,11 @@ const char DASHBOARD_HTML[] PROGMEM = R"rawliteral(
         }
         chart.update();
 
+        // Real-time Node 3 Pump Relay Telemetry
+        if (d.pump_active_tracked !== undefined) {
+          updatePumpStatusUI(d.pump_active_tracked, d.pump_safety_lockout);
+        }
+
         // Synchronized High-Res Event Status (Unified in single 1-second poll)
         const statusEl = document.getElementById('eventLiveStatus');
         const elapsedEl = document.getElementById('eventElapsedText');
@@ -1041,6 +1282,165 @@ const char DASHBOARD_HTML[] PROGMEM = R"rawliteral(
 
       } catch (err) {
         console.error('Fetch error:', err);
+      }
+    }
+
+    // =========================================================================
+    // Node 3 Pump Relay Controller (PIN: 7431 Guarded)
+    // =========================================================================
+    const PUMP_SECURITY_PIN = '7431';
+
+    function updatePumpStatusUI(isPumpOn, isLockout) {
+      const toggle = document.getElementById('pumpToggleSwitch');
+      const badge = document.getElementById('pumpStatusBadge');
+      const badgeText = document.getElementById('pumpStatusBadgeText');
+      const heading = document.getElementById('pumpStateHeading');
+      const subtext = document.getElementById('pumpStateSubtext');
+      const lockoutNotice = document.getElementById('pumpLockoutNotice');
+
+      const active = (isPumpOn === true || isPumpOn === 1 || isPumpOn === 'true');
+
+      if (toggle && document.activeElement !== toggle) {
+        toggle.checked = active;
+      }
+
+      if (active) {
+        if (badge) {
+          badge.className = 'badge badge-pump-on';
+          badgeText.innerText = '⚡ PUMP ON (RUNNING)';
+        }
+        if (heading) {
+          heading.innerText = 'ENERGIZED / PUMPING';
+          heading.style.color = '#10b981';
+        }
+        if (subtext) {
+          subtext.innerText = 'Relay Coil 30A Active';
+          subtext.style.color = '#34d399';
+        }
+      } else {
+        if (badge) {
+          badge.className = 'badge badge-pump-off';
+          badgeText.innerText = 'PUMP OFF (STANDBY)';
+        }
+        if (heading) {
+          heading.innerText = 'OFFLINE / STOPPED';
+          heading.style.color = '#94a3b8';
+        }
+        if (subtext) {
+          subtext.innerText = 'PIN Required to Toggle';
+          subtext.style.color = '#38bdf8';
+        }
+      }
+
+      if (lockoutNotice) {
+        if (isLockout) {
+          if (badge) {
+            badge.className = 'badge badge-pump-lock';
+            badgeText.innerText = '⚠️ SAFETY LOCKOUT';
+          }
+          lockoutNotice.style.display = 'block';
+        } else {
+          lockoutNotice.style.display = 'none';
+        }
+      }
+    }
+
+    function verifyPumpPin() {
+      const pinInput = document.getElementById('pumpPinInput');
+      const pinWrap = document.getElementById('pinInputWrap');
+      const errEl = document.getElementById('pinErrorMsg');
+      const enteredPin = (pinInput ? pinInput.value : '').trim();
+
+      if (!enteredPin) {
+        if (errEl) {
+          errEl.innerText = '⚠️ Security PIN required! Enter 7431 to toggle pump.';
+          errEl.style.display = 'block';
+          errEl.style.color = '#f59e0b';
+        }
+        if (pinWrap) {
+          pinWrap.classList.add('pin-shake');
+          setTimeout(() => pinWrap.classList.remove('pin-shake'), 500);
+        }
+        if (pinInput) pinInput.focus();
+        showToast('⚠️ PIN Required: Enter 7431 to control pump');
+        return false;
+      }
+
+      if (enteredPin !== PUMP_SECURITY_PIN) {
+        if (errEl) {
+          errEl.innerText = '❌ Access Denied: Incorrect PIN! (Password 7431 required)';
+          errEl.style.display = 'block';
+          errEl.style.color = '#f43f5e';
+        }
+        if (pinWrap) {
+          pinWrap.classList.add('pin-shake');
+          setTimeout(() => pinWrap.classList.remove('pin-shake'), 500);
+        }
+        if (pinInput) pinInput.focus();
+        showToast('❌ Access Denied: Incorrect PIN (7431 required)');
+        return false;
+      }
+
+      if (errEl) {
+        errEl.innerText = '✅ PIN 7431 Authorized!';
+        errEl.style.display = 'block';
+        errEl.style.color = '#10b981';
+      }
+      return true;
+    }
+
+    function clearPinError() {
+      const errEl = document.getElementById('pinErrorMsg');
+      if (errEl) errEl.style.display = 'none';
+    }
+
+    function togglePinVisibility() {
+      const pinInput = document.getElementById('pumpPinInput');
+      if (!pinInput) return;
+      pinInput.type = (pinInput.type === 'password') ? 'text' : 'password';
+    }
+
+    async function onPumpSwitchChanged(switchEl) {
+      const targetState = switchEl.checked ? 1 : 0;
+
+      if (!verifyPumpPin()) {
+        switchEl.checked = !switchEl.checked;
+        return;
+      }
+
+      try {
+        const res = await fetch('/api/pump?state=' + targetState);
+        const data = await res.json();
+        if (res.ok) {
+          showToast(targetState === 1 ? '⚡ Dispatched PUMP START command (PIN 7431 Verified)' : '🛑 Dispatched PUMP STOP command (PIN 7431 Verified)');
+          fetchStatus();
+        } else {
+          showToast('Pump Command Rejected: ' + (data.reason || 'Safety Lockout'));
+          switchEl.checked = !switchEl.checked;
+        }
+      } catch(e) {
+        showToast('Network Error: ' + e.message);
+      }
+    }
+
+    async function triggerPumpPinAction(turnOn) {
+      if (!verifyPumpPin()) return;
+
+      const switchEl = document.getElementById('pumpToggleSwitch');
+      if (switchEl) switchEl.checked = turnOn;
+
+      try {
+        const res = await fetch('/api/pump?state=' + (turnOn ? 1 : 0));
+        const data = await res.json();
+        if (res.ok) {
+          showToast(turnOn ? '⚡ Dispatched PUMP START command (PIN 7431 Verified)' : '🛑 Dispatched PUMP STOP command (PIN 7431 Verified)');
+          fetchStatus();
+        } else {
+          showToast('Pump Command Rejected: ' + (data.reason || 'Safety Lockout'));
+          if (switchEl) switchEl.checked = !turnOn;
+        }
+      } catch(e) {
+        showToast('Network Error: ' + e.message);
       }
     }
 
