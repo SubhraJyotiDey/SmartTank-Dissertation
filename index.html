@@ -1467,7 +1467,7 @@
             x: { display: false },
             y: {
               suggestedMin: 0,
-              suggestedMax: 65,
+              suggestedMax: 85,
               grid: { color: 'rgba(255, 255, 255, 0.05)' },
               ticks: { color: '#94a3b8', font: { family: 'JetBrains Mono', size: 10 } }
             }
@@ -1475,6 +1475,129 @@
           animation: { duration: 0 }
         }
       });
+    }
+
+    // Active Data Source Tracking
+    let activeDataSource = 'none'; // 'mqtt', 'sheets', 'local'
+    let isPollingSheets = false;
+    let isPollingLocal = false;
+    const SCRIPT_URL = localStorage.getItem('google_script_url') || 
+      'https://script.google.com/macros/s/AKfycbx7BzoSWxozJTqKUzqhG7wfK0P1MwTNogPdGqFiA2-jvY_G2s5sMhVWGPw2E-p2y0yU/exec';
+    const LOCAL_NODE1_URL = 'http://192.168.29.125/api/status';
+
+    // 1. Google Sheets Cloud Telemetry Poller (Universal & 100% Reliable anywhere in the world)
+    async function fetchFromGoogleSheets() {
+      if (isPollingSheets) return;
+      // If we are actively receiving live 5Hz MQTT messages within the last 3.5s, skip sheet poll
+      if (Date.now() - lastMsgTime < 3500 && activeDataSource === 'mqtt') {
+        return;
+      }
+      isPollingSheets = true;
+      try {
+        const scriptUrl = document.getElementById('inputScriptUrl')?.value || SCRIPT_URL;
+        const resp = await fetch(scriptUrl + '?action=get_latest&t=' + Date.now(), { cache: 'no-store' });
+        if (!resp.ok) throw new Error('HTTP ' + resp.status);
+        const data = await resp.json();
+        if (data.status === 'success' && data.latest) {
+          const item = data.latest;
+          const cap = parseFloat(document.getElementById('inputTankCap')?.value || 1000);
+          const depth = parseFloat(document.getElementById('inputTankDepth')?.value || 122);
+          const lvl = (item.pressure_level !== undefined && item.pressure_level !== null) ? item.pressure_level : 0;
+
+          const telemetryObj = {
+            p: item.pressure_kpa || 0,
+            l: lvl,
+            v: item.voltage || 0,
+            d: 0.0,
+            s: item.state || 'STATIC',
+            h: item.head_m || 0,
+            vol: (lvl / 100.0) * cap,
+            cap: cap,
+            depth: depth,
+            adc: Math.round((item.voltage || 1.89) * (26666 / 5.0)),
+            u_l: (item.ultrasonic_level !== undefined && item.ultrasonic_level !== null) ? item.ultrasonic_level : -1,
+            u_d: (item.ultrasonic_dist !== undefined && item.ultrasonic_dist !== null) ? item.ultrasonic_dist : -1,
+            p_emp: 61.4,
+            p_ful: 73.4,
+            ver: '1.2.8'
+          };
+
+          handleLiveTelemetry(telemetryObj);
+          activeDataSource = 'sheets';
+          updateMqttBadge('online', 'CLOUD SYNC (' + (data.sheet || 'Floor 1') + ')');
+
+          // Populate chart history if chart is empty
+          if (Array.isArray(data.history) && data.history.length > 0 && labels.length < 5) {
+            labels.length = 0;
+            pressureData.length = 0;
+            const rev = [...data.history].reverse();
+            for (const h of rev) {
+              if (h.time && h.pressure_kpa !== undefined) {
+                const parts = h.time.split(' ');
+                labels.push(parts[1] || h.time);
+                pressureData.push(h.pressure_kpa);
+              }
+            }
+            if (chart) chart.update();
+          }
+        }
+      } catch (err) {
+        console.warn('[SHEETS POLL] Could not fetch get_latest:', err);
+        if (Date.now() - lastMsgTime > 8000) {
+          updateMqttBadge('offline', 'OFFLINE');
+        }
+      } finally {
+        isPollingSheets = false;
+      }
+    }
+
+    // 2. Direct Local ESP32 Poller (Active on localhost & LAN)
+    async function fetchFromLocalEsp() {
+      if (window.location.protocol === 'https:') return; // Browsers block HTTP from HTTPS
+      if (isPollingLocal) return;
+      isPollingLocal = true;
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 1200);
+        const resp = await fetch(LOCAL_NODE1_URL, { signal: controller.signal, cache: 'no-store' });
+        clearTimeout(timeoutId);
+        if (resp.ok) {
+          const s = await resp.json();
+          const telemetryObj = {
+            p: s.pressure_kpa,
+            l: s.level_pct,
+            v: s.voltage,
+            d: s.dp_dt,
+            s: s.tap_state,
+            h: s.head_m,
+            vol: s.volume_liters,
+            cap: s.tank_capacity,
+            depth: s.tank_depth,
+            adc: s.raw_adc,
+            u_l: s.rooftop_level,
+            u_d: s.rooftop_dist,
+            u_f: s.us_full_dist,
+            p_emp: s.p_empty,
+            p_ful: s.p_full,
+            ver: s.firmware_version,
+            pump: s.pump_active_tracked,
+            p_lock: s.pump_safety_lockout,
+            rec: s.event_recording,
+            rec_s: s.event_elapsed,
+            dur: s.event_duration,
+            samples: s.event_samples,
+            evt: s.event_name,
+            up_pct: s.event_upload_pct
+          };
+          handleLiveTelemetry(telemetryObj);
+          activeDataSource = 'local';
+          updateMqttBadge('online', 'LOCAL LAN (ESP32)');
+        }
+      } catch (e) {
+        // Local node not accessible from this client
+      } finally {
+        isPollingLocal = false;
+      }
     }
 
     // Connect to MQTT Broker over WebSockets
@@ -1496,8 +1619,10 @@
       });
 
       mqttClient.on('connect', () => {
-        console.log('✅ Connected to HiveMQ Broker!');
-        updateMqttBadge('online', 'CLOUD CONNECTED');
+        console.log('✅ Connected to MQTT Broker!');
+        if (activeDataSource !== 'sheets') {
+          updateMqttBadge('online', 'CLOUD CONNECTED');
+        }
         showToast('Connected to Global Cloud Broker');
 
         // Subscribe to live telemetry and status acknowledgments
@@ -1515,6 +1640,8 @@
           const data = JSON.parse(payloadStr);
 
           if (topic === topicTelemetry) {
+            activeDataSource = 'mqtt';
+            updateMqttBadge('online', 'LIVE MQTT (5 Hz)');
             handleLiveTelemetry(data);
           } else if (topic === topicStatus) {
             handleStatusAck(data);
@@ -1525,16 +1652,16 @@
       });
 
       mqttClient.on('reconnect', () => {
-        updateMqttBadge('connecting', 'RECONNECTING...');
+        if (activeDataSource === 'none') updateMqttBadge('connecting', 'RECONNECTING...');
       });
 
       mqttClient.on('offline', () => {
-        updateMqttBadge('offline', 'CLOUD OFFLINE');
+        if (activeDataSource === 'none') updateMqttBadge('offline', 'CLOUD OFFLINE');
       });
 
       mqttClient.on('error', (err) => {
         console.error('MQTT Connection Error:', err);
-        updateMqttBadge('offline', 'ERROR');
+        if (activeDataSource === 'none') updateMqttBadge('offline', 'ERROR');
       });
     }
 
@@ -2026,10 +2153,20 @@
       connectMqtt();
     }
 
-    // Startup
+    // Startup - Intelligent Multi-Tier Telemetry Engine
     window.onload = () => {
       initChart();
       connectMqtt();
+
+      // Immediate Fetch: Parallel Cloud Sync & Local Subnet Poll
+      fetchFromGoogleSheets();
+      fetchFromLocalEsp();
+
+      // 1. High-speed local LAN poller every 1.5s (active on localhost/HTTP)
+      setInterval(fetchFromLocalEsp, 1500);
+
+      // 2. Cloud Google Sheets fallback poller every 5s (active whenever MQTT has no fresh stream)
+      setInterval(fetchFromGoogleSheets, 5000);
     };
   </script>
 </body>

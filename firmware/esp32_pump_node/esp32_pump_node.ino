@@ -549,6 +549,7 @@ void setup() {
             server.send(200, "application/json", "{\"status\":\"ok\"}");
         }
     });
+    server.enableCORS(true);
     server.begin();
     Serial.println("[HTTP] Node 3 Web Server started on port 80");
 }

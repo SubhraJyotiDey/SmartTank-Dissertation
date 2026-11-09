@@ -480,6 +480,7 @@ void setup() {
     String json = "{\"status\":\"ok\",\"auto_enabled\":" + String(autoPumpControlEnabled ? "true" : "false") + ",\"start_threshold\":" + String(pumpAutoStartThreshold, 1) + ",\"stop_threshold\":" + String(pumpAutoStopThreshold, 1) + "}";
     server.send(200, "application/json", json);
   });
+  server.enableCORS(true);
   server.begin();
   Serial.println(F("[HTTP] Embedded Web Server started on port 80"));
 
@@ -1623,6 +1624,9 @@ void handleStatusApi() {
   json += "\"pump_lockout_reason\":\"" + pumpLockoutReason + "\"";
   json += "}";
 
+  server.sendHeader("Access-Control-Allow-Origin", "*");
+  server.sendHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+  server.sendHeader("Access-Control-Allow-Headers", "*");
   server.send(200, "application/json", json);
 }
 

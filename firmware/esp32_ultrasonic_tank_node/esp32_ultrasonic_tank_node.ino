@@ -207,6 +207,7 @@ void setup() {
     cloudOTA.checkAndUpdate(true); // Force download & flash from GitHub
   });
 
+  server.enableCORS(true);
   server.begin();
   Serial.println(F("[HTTP] Local telemetry API started on port 80"));
 
