@@ -521,7 +521,7 @@ void maintainMqtt() {
     if (millis() - lastReconnectAttempt > 5000) {
       lastReconnectAttempt = millis();
       String clientId = "ESP32Tap-" + String((uint32_t)ESP.getEfuseMac(), HEX);
-      espMqttClient.setTimeout(2); // Non-blocking: max 2s socket timeout
+      espMqttClient.setTimeout(3000); // 3000 ms (3 seconds socket timeout)
       if (mqttClient.connect(clientId.c_str())) {
         Serial.println(F("[MQTT] ✅ Connected to Global HiveMQ Broker!"));
         mqttClient.subscribe(MQTT_TOPIC_COMMAND);
