@@ -74,9 +74,9 @@ void setRelay(bool state, const String& reason) {
     if (pumpActive == state) return;
 
     unsigned long now = millis();
-    // Enforce anti-chatter deadband (unless emergency safety shutoff)
-    if (!reason.startsWith("SAFETY") && (now - lastStateChangeTime < ANTI_CHATTER_DEADBAND_MS) && lastStateChangeTime != 0) {
-        Serial.printf("[RELAY] Toggle rejected: Anti-chatter deadband active (%lu ms left)\n",
+    // Enforce anti-chatter restart cooldown: NEVER delay or reject a STOP command!
+    if (state && (now - lastStateChangeTime < ANTI_CHATTER_DEADBAND_MS) && lastStateChangeTime != 0) {
+        Serial.printf("[RELAY] Turn-on rejected: Anti-chatter cooldown active (%lu ms left)\n",
                       ANTI_CHATTER_DEADBAND_MS - (now - lastStateChangeTime));
         return;
     }
@@ -546,7 +546,12 @@ void setup() {
     server.on("/api/pump", HTTP_GET, []() {
         if (server.hasArg("state")) {
             setRelay(server.arg("state").toInt() == 1, "Web UI Manual Override");
-            server.send(200, "application/json", "{\"status\":\"ok\"}");
+            server.send(200, "application/json", "{\"status\":\"ok\",\"pump_state\":\"" + String(pumpActive ? "ON" : "OFF") + "\"}");
+        } else if (server.hasArg("keepalive")) {
+            lastHeartbeatTime = millis();
+            server.send(200, "application/json", "{\"status\":\"ok\",\"watchdog_fed\":true,\"pump_state\":\"" + String(pumpActive ? "ON" : "OFF") + "\"}");
+        } else {
+            server.send(200, "application/json", "{\"pump_state\":\"" + String(pumpActive ? "ON" : "OFF") + "\"}");
         }
     });
     server.enableCORS(true);

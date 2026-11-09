@@ -256,12 +256,24 @@ bool sendEspNowPumpCommand(uint8_t cmd, float level) {
 
   esp_err_t res = esp_now_send(pumpNodeMac, (uint8_t *)&pkt, sizeof(pkt));
   esp_now_send(broadcastMac, (uint8_t *)&pkt, sizeof(pkt)); // Fallback broadcast ensures delivery
-  if (res == ESP_OK || true) {
-    pumpActiveTracked = (cmd == 1);
-    lastPumpCmdTime = now;
-    return true;
+
+  // Dual-Path LAN Forwarding: Also dispatch directly over local TCP HTTP to Node 3 (192.168.29.175)
+  if (WiFi.status() == WL_CONNECTED) {
+    HTTPClient httpPump;
+    WiFiClient clientPump;
+    if (httpPump.begin(clientPump, "http://192.168.29.175/api/pump?state=" + String(cmd))) {
+      httpPump.setTimeout(1500);
+      int httpCode = httpPump.GET();
+      if (httpCode == 200) {
+        Serial.printf("[PUMP] ✅ Direct HTTP command dispatched to Node 3 (state=%d)\n", cmd);
+      }
+      httpPump.end();
+    }
   }
-  return false;
+
+  pumpActiveTracked = (cmd == 1);
+  lastPumpCmdTime = now;
+  return true;
 }
 
 void broadcastClusterHeartbeat() {
@@ -433,6 +445,9 @@ void setup() {
 
   // Connect to Wi-Fi
   initWiFi();
+
+  // Initialize ESP-NOW Cluster Protocol
+  initEspNowCluster();
 
   // Start background rooftop node poller on Core 0
   eventRecorder.setScriptUrl(googleScriptUrl);
@@ -1404,8 +1419,23 @@ void wifiMaintainerTask(void *pvParameters) {
       maintainWiFi();
     }
 
-    // 2. Broadcast Cluster Heartbeat (feeds Node 3 10-second safety watchdog)
+    // 2. Broadcast Cluster Heartbeat (feeds Node 3 15-second safety watchdog via ESP-NOW)
     broadcastClusterHeartbeat();
+
+    // Dual-Path Heartbeat & Status Sync: Feed Node 3 watchdog over local HTTP keepalive
+    if (WiFi.status() == WL_CONNECTED) {
+      HTTPClient httpKeepalive;
+      WiFiClient clientKeepalive;
+      if (httpKeepalive.begin(clientKeepalive, "http://192.168.29.175/api/pump?keepalive=1")) {
+        httpKeepalive.setTimeout(1200);
+        int code = httpKeepalive.GET();
+        if (code == 200) {
+          String resp = httpKeepalive.getString();
+          pumpActiveTracked = (resp.indexOf("\"pump_state\":\"ON\"") >= 0);
+        }
+        httpKeepalive.end();
+      }
+    }
 
     // 3. Process Pending Gateway Cloud Forwarding for Offline Peers
     if (pendingProxyChunk.hasData && isElectedGateway && (WiFi.status() == WL_CONNECTED)) {
@@ -1514,9 +1544,6 @@ void initOTA() {
 
   ArduinoOTA
     .onStart([]() {
-      // Suspend all Core 0 FreeRTOS tasks to guarantee zero cache conflicts while Update.write() writes to flash
-      if (wifiTaskHandle != NULL) vTaskSuspend(wifiTaskHandle);
-      eventRecorder.suspendTasks();
       String type = (ArduinoOTA.getCommand() == U_FLASH) ? "sketch" : "filesystem";
       Serial.println("[OTA] Remote code upload starting: " + type);
     })
@@ -1527,9 +1554,6 @@ void initOTA() {
       Serial.printf("[OTA] Progress: %u%%\r", (progress / (total / 100)));
     })
     .onError([](ota_error_t error) {
-      // Resume background tasks if OTA fails/aborts
-      if (wifiTaskHandle != NULL) vTaskResume(wifiTaskHandle);
-      eventRecorder.resumeTasks();
       Serial.printf("[OTA] Error[%u]: ", error);
       if (error == OTA_AUTH_ERROR) Serial.println("Auth Failed");
       else if (error == OTA_BEGIN_ERROR) Serial.println("Begin Failed");
