@@ -1558,19 +1558,9 @@
           activeDataSource = 'sheets';
           updateMqttBadge('online', 'CLOUD SYNC (' + (data.sheet || 'Floor 1') + ')');
 
-          // Populate chart history with real past minutes if initial run
-          if (Array.isArray(data.history) && data.history.length > 0 && targetPressure === 69.5) {
-            const rev = [...data.history].reverse();
-            const valid = rev.map(h => h.pressure_kpa).filter(p => p !== undefined && p > 0);
-            if (valid.length > 0) {
-              targetPressure = valid[valid.length - 1];
-              currentRenderPressure = targetPressure;
-              const start = Math.max(0, OSCILLOSCOPE_POINTS - valid.length);
-              for (let i = 0; i < valid.length && (start + i) < OSCILLOSCOPE_POINTS; i++) {
-                pressureData[start + i] = valid[i];
-              }
-              if (chart) chart.update('none');
-            }
+          // Set oscilloscope sweep target to current reading (do not inject 30-min history into high-speed buffer)
+          if (telemetryObj.p !== undefined && !isNaN(telemetryObj.p) && telemetryObj.p > 0) {
+            targetPressure = telemetryObj.p;
           }
         }
       } catch (err) {
@@ -1590,7 +1580,7 @@
       isPollingLocal = true;
       try {
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 1200);
+        const timeoutId = setTimeout(() => controller.abort(), 3500); // 3.5s resilient timeout for ESP32
         const resp = await fetch(LOCAL_NODE1_URL, { signal: controller.signal, cache: 'no-store' });
         clearTimeout(timeoutId);
         if (resp.ok) {

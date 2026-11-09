@@ -506,11 +506,14 @@ void maintainMqtt() {
     if (millis() - lastReconnectAttempt > 5000) {
       lastReconnectAttempt = millis();
       String clientId = "ESP32Tap-" + String((uint32_t)ESP.getEfuseMac(), HEX);
+      espMqttClient.setTimeout(2); // Non-blocking: max 2s socket timeout
       if (mqttClient.connect(clientId.c_str())) {
         Serial.println(F("[MQTT] ✅ Connected to Global HiveMQ Broker!"));
         mqttClient.subscribe(MQTT_TOPIC_COMMAND);
         Serial.printf("[MQTT] 🛰️ Subscribed to Cloud Command Topic: %s\n", MQTT_TOPIC_COMMAND);
         publishMqttStatus("ESP32 Online & Ready");
+      } else {
+        Serial.printf("[MQTT] ❌ HiveMQ connect failed (rc=%d). Retrying in 5s...\n", mqttClient.state());
       }
     }
   } else {
@@ -1059,8 +1062,10 @@ bool postBulkJsonToGoogleSheets(const String& jsonPayload) {
   client.setInsecure(); // Skip certificate verification for Google Apps Script
 
   HTTPClient http;
-  http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
-  http.setTimeout(35000); // 35s timeout for batch bulk ingestion
+  // Google Apps Script processes the POST and writes rows before returning 302!
+  // Disabling redirect following avoids memory exhaustion and drops latency to ~1.5s
+  http.setFollowRedirects(HTTPC_DISABLE_FOLLOW_REDIRECTS);
+  http.setTimeout(10000); // 10s maximum timeout
 
   bool success = false;
   if (http.begin(client, googleScriptUrl)) {
@@ -1068,12 +1073,12 @@ bool postBulkJsonToGoogleSheets(const String& jsonPayload) {
     int httpCode = http.POST(jsonPayload);
     Serial.printf("[SHEETS-BULK] HTTP POST Response Code: %d\n", httpCode);
 
-    if (httpCode > 0) {
-      String response = http.getString();
-      Serial.printf("[SHEETS-BULK] Server Response: %s\n", response.c_str());
-      success = (httpCode == 200 || httpCode == 302);
+    // 200 (OK) or 302 (Found/Redirect) confirm Google Apps Script executed successfully
+    if (httpCode == 200 || httpCode == 302) {
+      success = true;
     } else {
-      Serial.printf("[SHEETS-BULK] Transmission failed, error: %s\n", http.errorToString(httpCode).c_str());
+      Serial.printf("[SHEETS-BULK] Transmission failed, error code: %d (%s)\n",
+                    httpCode, http.errorToString(httpCode).c_str());
     }
     http.end();
   } else {
@@ -1184,7 +1189,8 @@ void uploadBufferedOfflineLogs() {
       // Corrupt lines skipped
       syncedLineCount += count;
     }
-    delay(200);
+    // Yield immediately after 1 batch so loop(), MQTT, Web Server and Sensors are NEVER starved!
+    break;
   }
   f.close();
 
@@ -1601,6 +1607,8 @@ void handleStatusApi() {
   json += "\"next_log_slot\":\"" + getNextLogSlotString() + "\",";
   json += "\"offline_queue\":" + String(getOfflineQueueCount()) + ",";
   json += "\"wifi_connected\":" + String((WiFi.status() == WL_CONNECTED) ? "true" : "false") + ",";
+  json += "\"mqtt_connected\":" + String(mqttClient.connected() ? "true" : "false") + ",";
+  json += "\"mqtt_state\":" + String(mqttClient.state()) + ",";
   json += "\"adc_mode\":\"" + String(usingExternalAdc ? "ADS1115 (16-bit)" : "ESP32 Internal (12-bit)") + "\",";
   json += "\"rooftop_level\":" + String(eventRecorder.getRooftopLevel(), 1) + ",";
   json += "\"rooftop_dist\":" + String(eventRecorder.getRooftopDist(), 1) + ",";
