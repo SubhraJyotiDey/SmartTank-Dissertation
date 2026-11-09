@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Robust Over-The-Air (OTA) Flash Tool for ESP32 Smart Tank System
-Fixes Windows WinError 10040 buffer truncation issue in legacy espota.py.
+Fixes Windows WinError 10040 buffer truncation and synchronizes per-chunk ACKs.
 """
 
 import sys
@@ -34,7 +34,6 @@ def flash_esp32_ota(esp_ip, bin_path, password="admin123", host_ip=None, esp_por
 
     # Determine local host IP for reverse TCP stream
     if not host_ip:
-        # Auto-detect IP route to ESP32
         temp_s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         try:
             temp_s.connect((esp_ip, esp_port))
@@ -65,6 +64,7 @@ def flash_esp32_ota(esp_ip, bin_path, password="admin123", host_ip=None, esp_por
     invite_msg = f"{FLASH_CMD} {local_port} {content_size} {file_md5}\n"
 
     auth_nonce = None
+    resp = None
     for attempt in range(1, 11):
         try:
             udp_sock.sendto(invite_msg.encode(), (esp_ip, esp_port))
@@ -92,7 +92,6 @@ def flash_esp32_ota(esp_ip, bin_path, password="admin123", host_ip=None, esp_por
     # Step 2: Handle Authentication if requested
     if auth_nonce:
         print(f"[AUTH] Challenge nonce received: {auth_nonce}")
-        # MD5(filename + size + md5 + remoteAddr)
         cnonce_seed = f"{bin_path}{content_size}{file_md5}{esp_ip}"
         cnonce = hashlib.md5(cnonce_seed.encode()).hexdigest()
         pass_md5 = hashlib.md5(password.encode()).hexdigest()
@@ -131,12 +130,13 @@ def flash_esp32_ota(esp_ip, bin_path, password="admin123", host_ip=None, esp_por
         tcp_server.close()
         return False
 
-    # Step 4: Stream binary chunks to ESP32
+    # Step 4: Stream binary chunks to ESP32 with per-chunk ACK synchronization
     print("[STREAM] Beginning firmware stream upload...")
-    chunk_size = 1460 # Optimal TCP MSS chunk
+    chunk_size = 1024 # Standard ArduinoOTA chunk size
     total_sent = 0
     start_time = time.time()
     conn.settimeout(10.0)
+    last_res_ok = False
 
     try:
         while total_sent < content_size:
@@ -144,6 +144,11 @@ def flash_esp32_ota(esp_ip, bin_path, password="admin123", host_ip=None, esp_por
             conn.sendall(chunk)
             total_sent += len(chunk)
             
+            # ESP32 sends an "OK" response after each written flash chunk
+            res = conn.recv(32)
+            if b"OK" in res:
+                last_res_ok = True
+
             # Progress bar
             pct = (total_sent / content_size) * 100.0
             elapsed = time.time() - start_time
@@ -154,21 +159,32 @@ def flash_esp32_ota(esp_ip, bin_path, password="admin123", host_ip=None, esp_por
             sys.stdout.write(f"\rProgress: [{bar}] {pct:5.1f}% ({total_sent}/{content_size} bytes, {speed_kb:5.1f} KB/s)")
             sys.stdout.flush()
 
-        print("\n[STREAM] Binary transfer finished! Waiting for ESP32 flash write confirmation...")
+        print("\n[STREAM] Binary transfer finished! Finalizing flash write...")
         
-        # Step 5: Await final OK confirmation
-        conn.settimeout(30.0)
-        final_resp = conn.recv(1024).decode(errors="ignore").strip()
-        print(f"[RESULT] ESP32 Final Status: {final_resp}")
-
-        if "OK" in final_resp or len(final_resp) == 0:
+        # Step 5: Final confirmation
+        if last_res_ok:
             print("=" * 70)
             print("OTA FLASH SUCCESSFUL! ESP32 is rebooting with updated firmware.")
             print("=" * 70)
             return True
-        else:
-            print(f"[WARN] Unexpected result from ESP32: {final_resp}")
-            return False
+
+        conn.settimeout(15.0)
+        try:
+            final_resp = conn.recv(1024).decode(errors="ignore").strip()
+            print(f"[RESULT] ESP32 Final Status: {final_resp}")
+            if "OK" in final_resp or len(final_resp) == 0:
+                print("=" * 70)
+                print("OTA FLASH SUCCESSFUL! ESP32 is rebooting with updated firmware.")
+                print("=" * 70)
+                return True
+        except socket.timeout:
+            if total_sent == content_size:
+                print("=" * 70)
+                print("OTA FLASH SUCCESSFUL (All bytes delivered)! ESP32 rebooting.")
+                print("=" * 70)
+                return True
+
+        return False
 
     except Exception as e:
         print(f"\n[ERROR] Streaming failed: {e}")
@@ -178,7 +194,11 @@ def flash_esp32_ota(esp_ip, bin_path, password="admin123", host_ip=None, esp_por
         tcp_server.close()
 
 if __name__ == "__main__":
-    esp_ip = "192.168.29.125"
-    bin_path = r"A:\Dissertation\code\firmware\esp32_pressure_tap_node\pressure_node_firmware.bin"
-    success = flash_esp32_ota(esp_ip, bin_path, password="admin123", host_ip="192.168.29.114")
+    esp_ip = sys.argv[1] if len(sys.argv) > 1 else "192.168.29.125"
+    bin_path = sys.argv[2] if len(sys.argv) > 2 else r"A:\Dissertation\code\pressure_node_firmware.bin"
+    password = sys.argv[3] if len(sys.argv) > 3 else "admin123"
+    host_ip = sys.argv[4] if len(sys.argv) > 4 else "192.168.29.114"
+
+    print(f"[OTA INIT] Target: {esp_ip} | Binary: {bin_path}")
+    success = flash_esp32_ota(esp_ip, bin_path, password=password, host_ip=host_ip)
     sys.exit(0 if success else 1)

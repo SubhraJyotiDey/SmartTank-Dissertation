@@ -277,6 +277,8 @@ unsigned long lastMqttPublishTime = 0;
 
 // Offline Persistent Storage in Flash SPIFFS
 const char* OFFLINE_QUEUE_FILE = "/offline_pressure.csv";
+volatile bool pendingOfflineDrain = false;
+volatile unsigned long wifiReconnectTime = 0;
 
 // Persistent Settings
 float pEmptyKPa       = DEFAULT_P_EMPTY_KPA;
@@ -746,8 +748,18 @@ void loop() {
     eventRecorder.captureSample(sensorVoltage, filteredPressure, dPdt, stStr, waterLevelPct, flowRateLps, totalDischargedLiters);
   }
 
-  // Check NTP clock and synchronized 10-minute Google Sheets logging
+  // Check NTP clock and synchronized 1-minute Google Sheets logging
   handleNtpAndLogging();
+
+  // Safely drain queued offline logs on Core 1 after Wi-Fi reconnect and network stabilization
+  static unsigned long lastOfflineDrainCheck = 0;
+  if ((pendingOfflineDrain || (getOfflineQueueCount() > 0)) && (WiFi.status() == WL_CONNECTED)) {
+    if ((currentMillis - wifiReconnectTime >= 4000) && (currentMillis - lastOfflineDrainCheck >= 15000)) {
+      lastOfflineDrainCheck = currentMillis;
+      pendingOfflineDrain = false;
+      uploadBufferedOfflineLogs();
+    }
+  }
 }
 
 // =========================================================================
@@ -1022,7 +1034,7 @@ bool postBulkJsonToGoogleSheets(const String& jsonPayload) {
 
   HTTPClient http;
   http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
-  http.setTimeout(25000); // 25s timeout for batch bulk ingestion
+  http.setTimeout(35000); // 35s timeout for batch bulk ingestion
 
   bool success = false;
   if (http.begin(client, googleScriptUrl)) {
@@ -1038,6 +1050,8 @@ bool postBulkJsonToGoogleSheets(const String& jsonPayload) {
       Serial.printf("[SHEETS-BULK] Transmission failed, error: %s\n", http.errorToString(httpCode).c_str());
     }
     http.end();
+  } else {
+    Serial.println(F("[SHEETS-BULK] Unable to initiate HTTP connection"));
   }
   client.stop(); // Free SSL buffer
   return success;
@@ -1048,19 +1062,34 @@ void uploadBufferedOfflineLogs() {
   if (!SPIFFS.exists(OFFLINE_QUEUE_FILE)) return;
 
   File f = SPIFFS.open(OFFLINE_QUEUE_FILE, FILE_READ);
-  if (!f || f.size() == 0) {
-    if (f) f.close();
+  if (!f) return;
+  if (f.size() == 0) {
+    f.close();
     SPIFFS.remove(OFFLINE_QUEUE_FILE);
     return;
   }
 
-  Serial.printf("\n[OFFLINE] Stored offline logs found (%u bytes). Starting bulk upload to Google Sheets...\n", (unsigned int)f.size());
+  // Count total records in the queue file
+  int totalLines = 0;
+  while (f.available()) {
+    if (f.read() == '\n') totalLines++;
+  }
+  f.seek(0); // Rewind to start of file
 
-  const int BATCH_SIZE = 25;
-  int totalSynced = 0;
-  bool failed = false;
+  if (totalLines == 0) {
+    f.close();
+    SPIFFS.remove(OFFLINE_QUEUE_FILE);
+    return;
+  }
 
-  while (f.available() && !failed) {
+  Serial.printf("\n[OFFLINE] Stored offline logs found: %d records (%u bytes). Starting bulk upload to Google Sheets...\n",
+                totalLines, (unsigned int)f.size());
+
+  const int BATCH_SIZE = 10; // 10 records per batch prevents Google Sheets execution timeouts
+  int syncedLineCount = 0;
+  bool uploadFailed = false;
+
+  while (f.available() && !uploadFailed) {
     String lines[BATCH_SIZE];
     int count = 0;
 
@@ -1079,22 +1108,31 @@ void uploadBufferedOfflineLogs() {
     for (int i = 0; i < count; i++) {
       String l = lines[i];
       int c1 = l.indexOf(',');
-      int c2 = l.indexOf(',', c1 + 1);
-      int c3 = l.indexOf(',', c2 + 1);
-      int c4 = l.indexOf(',', c3 + 1);
-      int c5 = l.indexOf(',', c4 + 1);
-      int c6 = l.indexOf(',', c5 + 1);
-      int c7 = l.indexOf(',', c6 + 1);
+      int c2 = (c1 > 0) ? l.indexOf(',', c1 + 1) : -1;
+      int c3 = (c2 > 0) ? l.indexOf(',', c2 + 1) : -1;
+      int c4 = (c3 > 0) ? l.indexOf(',', c3 + 1) : -1;
+      int c5 = (c4 > 0) ? l.indexOf(',', c4 + 1) : -1;
+      int c6 = (c5 > 0) ? l.indexOf(',', c5 + 1) : -1;
+      int c7 = (c6 > 0) ? l.indexOf(',', c6 + 1) : -1;
 
       if (c1 > 0 && c2 > 0 && c3 > 0) {
         String ts  = l.substring(0, c1);
         String v   = l.substring(c1 + 1, c2);
         String p   = l.substring(c2 + 1, c3);
-        String lvl = l.substring(c3 + 1, c4);
-        String h   = (c5 > 0) ? l.substring(c4 + 1, c5) : "0";
-        String st  = (c6 > 0) ? l.substring(c5 + 1, c6) : "STATIC";
-        String pk  = (c7 > 0) ? l.substring(c6 + 1, c7) : "0";
+        String lvl = (c4 > 0) ? l.substring(c3 + 1, c4) : l.substring(c3 + 1);
+        String h   = (c4 > 0 && c5 > 0) ? l.substring(c4 + 1, c5) : ((c4 > 0) ? l.substring(c4 + 1) : "0");
+        String st  = (c5 > 0 && c6 > 0) ? l.substring(c5 + 1, c6) : ((c5 > 0) ? l.substring(c5 + 1) : "STATIC");
+        String pk  = (c6 > 0 && c7 > 0) ? l.substring(c6 + 1, c7) : ((c6 > 0) ? l.substring(c6 + 1) : "0");
         String dlt = (c7 > 0) ? l.substring(c7 + 1) : "0";
+
+        ts.trim(); v.trim(); p.trim(); lvl.trim(); h.trim(); st.trim(); pk.trim(); dlt.trim();
+        if (v.length() == 0) v = "0.0";
+        if (p.length() == 0) p = "0.0";
+        if (lvl.length() == 0) lvl = "0.0";
+        if (h.length() == 0) h = "0.0";
+        if (st.length() == 0) st = "STATIC";
+        if (pk.length() == 0) pk = "0.0";
+        if (dlt.length() == 0) dlt = "0.0";
 
         if (validRecords > 0) json += ",";
         json += "{\"timestamp\":\"" + ts + "\",\"voltage\":" + v +
@@ -1109,36 +1147,52 @@ void uploadBufferedOfflineLogs() {
     if (validRecords > 0) {
       bool ok = postBulkJsonToGoogleSheets(json);
       if (ok) {
-        totalSynced += validRecords;
-        Serial.printf("[OFFLINE] Synced batch of %d records (Total: %d)...\n", validRecords, totalSynced);
+        syncedLineCount += count;
+        Serial.printf("[OFFLINE] Synced batch of %d records (Total: %d/%d)...\n", count, syncedLineCount, totalLines);
       } else {
-        Serial.println(F("[OFFLINE] Batch upload failed! Halting drain for retry."));
-        failed = true;
+        Serial.printf("[OFFLINE] Batch upload failed at record index %d! Halting drain without losing data.\n", syncedLineCount);
+        uploadFailed = true;
         break;
       }
+    } else {
+      // Corrupt lines skipped
+      syncedLineCount += count;
     }
     delay(200);
   }
+  f.close();
 
-  if (!failed && !f.available()) {
-    f.close();
+  // Bulletproof queue maintenance: ZERO DATA LOSS
+  if (!uploadFailed && syncedLineCount >= totalLines) {
     SPIFFS.remove(OFFLINE_QUEUE_FILE);
-    Serial.printf("[OFFLINE] SUCCESS: All %d offline records synchronized! Queue cleared.\n\n", totalSynced);
-  } else {
-    // Preserve remaining unsent lines
-    String rem = "";
-    while (f.available()) {
-      rem += f.readStringUntil('\n') + "\n";
-    }
-    f.close();
-    SPIFFS.remove(OFFLINE_QUEUE_FILE);
-    if (rem.length() > 0) {
-      File rf = SPIFFS.open(OFFLINE_QUEUE_FILE, FILE_WRITE);
-      if (rf) {
-        rf.print(rem);
-        rf.close();
+    Serial.printf("[OFFLINE] SUCCESS: All %d offline records synchronized! Queue cleared.\n\n", syncedLineCount);
+  } else if (syncedLineCount > 0) {
+    // Partial success: Only remove the lines that were confirmed uploaded!
+    File rf = SPIFFS.open(OFFLINE_QUEUE_FILE, FILE_READ);
+    if (rf) {
+      int skipped = 0;
+      while (rf.available() && skipped < syncedLineCount) {
+        if (rf.read() == '\n') skipped++;
       }
+      String remainingData = "";
+      while (rf.available()) {
+        remainingData += rf.readStringUntil('\n') + "\n";
+      }
+      rf.close();
+
+      SPIFFS.remove(OFFLINE_QUEUE_FILE);
+      if (remainingData.length() > 0) {
+        File wf = SPIFFS.open(OFFLINE_QUEUE_FILE, FILE_WRITE);
+        if (wf) {
+          wf.print(remainingData);
+          wf.close();
+        }
+      }
+      Serial.printf("[OFFLINE] Retained %d unuploaded records in queue for next retry.\n", totalLines - syncedLineCount);
     }
+  } else {
+    // Zero records were uploaded: Leave the file 100% untouched!
+    Serial.printf("[OFFLINE] Upload failed: All %d records safely preserved in Flash memory.\n", totalLines);
   }
 }
 
@@ -1368,7 +1422,7 @@ void initWiFi() {
   xTaskCreatePinnedToCore(
     wifiMaintainerTask,
     "WiFiMaintainer",
-    4096,
+    8192, // 8KB stack for secure operations & FreeRTOS stability
     NULL,
     1,
     &wifiTaskHandle,
@@ -1389,7 +1443,9 @@ void maintainWiFi() {
                     WiFi.localIP().toString().c_str(), WiFi.RSSI());
       configTime(GMT_OFFSET_SEC, DAYLIGHT_OFFSET_SEC, NTP_SERVER); // Resync NTP
       initEspNowSender(); // Re-sync ESP-NOW peer to current Wi-Fi channel
-      uploadBufferedOfflineLogs(); // Immediately drain offline backlog!
+      // Flag Core 1 to drain offline backlog after network routing stabilizes (4-second delay)
+      pendingOfflineDrain = true;
+      wifiReconnectTime = now;
     }
     return;
   }

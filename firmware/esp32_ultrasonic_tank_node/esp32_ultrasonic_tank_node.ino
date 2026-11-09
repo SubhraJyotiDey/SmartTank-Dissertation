@@ -403,7 +403,7 @@ bool postBulkJsonToGoogleSheets(const String& jsonPayload) {
 
   HTTPClient http;
   http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
-  http.setTimeout(25000); // 25s timeout for batch
+  http.setTimeout(35000); // 35s timeout for batch bulk ingestion
 
   bool success = false;
   if (http.begin(client, GOOGLE_SCRIPT_URL)) {
@@ -429,19 +429,34 @@ void uploadBufferedOfflineLogs() {
   if (!SPIFFS.exists(OFFLINE_QUEUE_FILE)) return;
 
   File f = SPIFFS.open(OFFLINE_QUEUE_FILE, FILE_READ);
-  if (!f || f.size() == 0) {
-    if (f) f.close();
+  if (!f) return;
+  if (f.size() == 0) {
+    f.close();
     SPIFFS.remove(OFFLINE_QUEUE_FILE);
     return;
   }
 
-  Serial.printf("\n[OFFLINE] Stored offline logs found (%u bytes). Starting bulk upload to Google Sheets...\n", (unsigned int)f.size());
+  // Count total records in the queue file
+  int totalLines = 0;
+  while (f.available()) {
+    if (f.read() == '\n') totalLines++;
+  }
+  f.seek(0); // Rewind to start of file
 
-  const int BATCH_SIZE = 25;
-  int totalSynced = 0;
-  bool failed = false;
+  if (totalLines == 0) {
+    f.close();
+    SPIFFS.remove(OFFLINE_QUEUE_FILE);
+    return;
+  }
 
-  while (f.available() && !failed) {
+  Serial.printf("\n[OFFLINE] Stored ground truth logs found: %d records (%u bytes). Starting bulk upload to Google Sheets...\n",
+                totalLines, (unsigned int)f.size());
+
+  const int BATCH_SIZE = 10; // 10 records per batch prevents Google Sheets execution timeouts
+  int syncedLineCount = 0;
+  bool uploadFailed = false;
+
+  while (f.available() && !uploadFailed) {
     String lines[BATCH_SIZE];
     int count = 0;
 
@@ -461,14 +476,19 @@ void uploadBufferedOfflineLogs() {
       String l = lines[i];
       // Format: timestamp,distance_cm,level_pct,tank_depth_cm
       int c1 = l.indexOf(',');
-      int c2 = l.indexOf(',', c1 + 1);
-      int c3 = l.indexOf(',', c2 + 1);
+      int c2 = (c1 > 0) ? l.indexOf(',', c1 + 1) : -1;
+      int c3 = (c2 > 0) ? l.indexOf(',', c2 + 1) : -1;
 
       if (c1 > 0 && c2 > 0) {
         String ts   = l.substring(0, c1);
         String dist = l.substring(c1 + 1, c2);
         String lvl  = (c3 > 0) ? l.substring(c2 + 1, c3) : l.substring(c2 + 1);
         String dpt  = (c3 > 0) ? l.substring(c3 + 1) : String(DEFAULT_TANK_DEPTH_CM, 1);
+
+        ts.trim(); dist.trim(); lvl.trim(); dpt.trim();
+        if (dist.length() == 0) dist = "0.0";
+        if (lvl.length() == 0) lvl = "0.0";
+        if (dpt.length() == 0) dpt = String(DEFAULT_TANK_DEPTH_CM, 1);
 
         if (validRecords > 0) json += ",";
         json += "{\"timestamp\":\"" + ts + "\",\"distance_cm\":" + dist +
@@ -481,35 +501,52 @@ void uploadBufferedOfflineLogs() {
     if (validRecords > 0) {
       bool ok = postBulkJsonToGoogleSheets(json);
       if (ok) {
-        totalSynced += validRecords;
-        Serial.printf("[OFFLINE] Synced batch of %d records (Total: %d)...\n", validRecords, totalSynced);
+        syncedLineCount += count;
+        Serial.printf("[OFFLINE] Synced batch of %d records (Total: %d/%d)...\n", count, syncedLineCount, totalLines);
       } else {
-        Serial.println(F("[OFFLINE] Batch upload failed! Halting drain for retry."));
-        failed = true;
+        Serial.printf("[OFFLINE] Batch upload failed at record index %d! Halting drain without losing data.\n", syncedLineCount);
+        uploadFailed = true;
         break;
       }
+    } else {
+      // Corrupt line encountered, advance past it
+      syncedLineCount += count;
     }
     delay(200);
   }
+  f.close();
 
-  if (!failed && !f.available()) {
-    f.close();
+  // Bulletproof queue maintenance: ZERO DATA LOSS
+  if (!uploadFailed && syncedLineCount >= totalLines) {
     SPIFFS.remove(OFFLINE_QUEUE_FILE);
-    Serial.printf("[OFFLINE] SUCCESS: All %d offline records synchronized! Queue cleared.\n\n", totalSynced);
-  } else {
-    String rem = "";
-    while (f.available()) {
-      rem += f.readStringUntil('\n') + "\n";
-    }
-    f.close();
-    SPIFFS.remove(OFFLINE_QUEUE_FILE);
-    if (rem.length() > 0) {
-      File rf = SPIFFS.open(OFFLINE_QUEUE_FILE, FILE_WRITE);
-      if (rf) {
-        rf.print(rem);
-        rf.close();
+    Serial.printf("[OFFLINE] SUCCESS: All %d offline records synchronized! Queue cleared.\n\n", syncedLineCount);
+  } else if (syncedLineCount > 0) {
+    // Partial success: Only remove the lines that were confirmed uploaded!
+    File rf = SPIFFS.open(OFFLINE_QUEUE_FILE, FILE_READ);
+    if (rf) {
+      int skipped = 0;
+      while (rf.available() && skipped < syncedLineCount) {
+        if (rf.read() == '\n') skipped++;
       }
+      String remainingData = "";
+      while (rf.available()) {
+        remainingData += rf.readStringUntil('\n') + "\n";
+      }
+      rf.close();
+
+      SPIFFS.remove(OFFLINE_QUEUE_FILE);
+      if (remainingData.length() > 0) {
+        File wf = SPIFFS.open(OFFLINE_QUEUE_FILE, FILE_WRITE);
+        if (wf) {
+          wf.print(remainingData);
+          wf.close();
+        }
+      }
+      Serial.printf("[OFFLINE] Retained %d unuploaded records in queue for next retry.\n", totalLines - syncedLineCount);
     }
+  } else {
+    // Zero records were uploaded: Leave the file 100% untouched!
+    Serial.printf("[OFFLINE] Upload failed: All %d records safely preserved in Flash memory.\n", totalLines);
   }
 }
 
@@ -646,7 +683,8 @@ void maintainWiFi() {
       Serial.printf("\n[WIFI] Wi-Fi Restored! IP: %s | RSSI: %d dBm\n",
                     WiFi.localIP().toString().c_str(), WiFi.RSSI());
       configTime(GMT_OFFSET_SEC, DAYLIGHT_OFFSET_SEC, NTP_SERVER); // Resync NTP
-      uploadBufferedOfflineLogs(); // Immediately drain offline backlog!
+      delay(2000); // 2-second stabilization delay for DHCP & DNS resolver
+      uploadBufferedOfflineLogs(); // Drain offline backlog!
     }
     return;
   }

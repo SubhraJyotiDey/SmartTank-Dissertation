@@ -201,14 +201,15 @@ function handleData(e) {
         rowIndex = sheet.getLastRow();
         timeRowMap[timeBucket] = rowIndex;
       } else {
+        var rowVals = sheet.getRange(rowIndex, 1, 1, 14).getValues()[0];
         if (node === "pressure") {
-          if (rec.voltage !== undefined) sheet.getRange(rowIndex, 2).setValue(parseFloat(rec.voltage).toFixed(3));
-          if (rec.pressure_kpa !== undefined) sheet.getRange(rowIndex, 3).setValue(parseFloat(rec.pressure_kpa).toFixed(2));
-          if (rec.level_pct !== undefined) sheet.getRange(rowIndex, 4).setValue(parseFloat(rec.level_pct).toFixed(1));
-          if (rec.head_m !== undefined) sheet.getRange(rowIndex, 5).setValue(parseFloat(rec.head_m).toFixed(2));
-          if (rec.tap_state !== undefined) sheet.getRange(rowIndex, 6).setValue(rec.tap_state);
-          if (rec.peak_hammer_kpa !== undefined) sheet.getRange(rowIndex, 11).setValue(parseFloat(rec.peak_hammer_kpa).toFixed(2));
-          if (rec.hammer_delta_kpa !== undefined) sheet.getRange(rowIndex, 12).setValue(parseFloat(rec.hammer_delta_kpa).toFixed(2));
+          if (rec.voltage !== undefined) rowVals[1] = parseFloat(rec.voltage).toFixed(3);
+          if (rec.pressure_kpa !== undefined) rowVals[2] = parseFloat(rec.pressure_kpa).toFixed(2);
+          if (rec.level_pct !== undefined) rowVals[3] = parseFloat(rec.level_pct).toFixed(1);
+          if (rec.head_m !== undefined) rowVals[4] = parseFloat(rec.head_m).toFixed(2);
+          if (rec.tap_state !== undefined) rowVals[5] = rec.tap_state;
+          if (rec.peak_hammer_kpa !== undefined) rowVals[10] = parseFloat(rec.peak_hammer_kpa).toFixed(2);
+          if (rec.hammer_delta_kpa !== undefined) rowVals[11] = parseFloat(rec.hammer_delta_kpa).toFixed(2);
         } else if (node === "ultrasonic") {
           var rawDist = rec.distance_cm !== undefined ? parseFloat(rec.distance_cm) : null;
           var tankOffsetCm = rec.sensor_offset_cm ? parseFloat(rec.sensor_offset_cm) : 6.0;
@@ -220,27 +221,32 @@ function handleData(e) {
             uLevel = (wHeight / depth) * 100.0;
           }
 
-          if (rawDist !== null) sheet.getRange(rowIndex, 7).setValue(rawDist.toFixed(1));
-          if (uLevel !== null) sheet.getRange(rowIndex, 8).setValue(uLevel.toFixed(1));
+          if (rawDist !== null) rowVals[6] = rawDist.toFixed(1);
+          if (uLevel !== null) rowVals[7] = uLevel.toFixed(1);
         }
-        sheet.getRange(rowIndex, 14).setValue(updateTimestamp);
+        rowVals[13] = updateTimestamp;
+
+        // Ground truth error calculation in memory
+        var pLevelVal = rowVals[3];
+        var uLevelVal = rowVals[7];
+        var tapStateVal = rowVals[5];
+        var tankDepthCm = rec.tank_depth_cm ? parseFloat(rec.tank_depth_cm) : 122.0;
+
+        if (pLevelVal !== "" && uLevelVal !== "" && pLevelVal !== undefined && uLevelVal !== undefined) {
+          var pLevel = parseFloat(pLevelVal);
+          var uLevel = parseFloat(uLevelVal);
+          if (!isNaN(pLevel) && !isNaN(uLevel)) {
+            var absErrorPct = Math.abs(pLevel - uLevel);
+            var absErrorCm = (absErrorPct / 100.0) * tankDepthCm;
+            rowVals[8] = absErrorPct.toFixed(2);
+            rowVals[9] = absErrorCm.toFixed(2);
+          }
+        }
+        sheet.getRange(rowIndex, 1, 1, 14).setValues([rowVals]);
       }
 
-      // Ground truth error calculation
       var pLevelVal = sheet.getRange(rowIndex, 4).getValue();
-      var uLevelVal = sheet.getRange(rowIndex, 8).getValue();
       var tapStateVal = sheet.getRange(rowIndex, 6).getValue();
-      var tankDepthCm = rec.tank_depth_cm ? parseFloat(rec.tank_depth_cm) : 122.0;
-
-      if (pLevelVal !== "" && uLevelVal !== "") {
-        var pLevel = parseFloat(pLevelVal);
-        var uLevel = parseFloat(uLevelVal);
-        var absErrorPct = Math.abs(pLevel - uLevel);
-        var absErrorCm = (absErrorPct / 100.0) * tankDepthCm;
-
-        sheet.getRange(rowIndex, 9).setValue(absErrorPct.toFixed(2));
-        sheet.getRange(rowIndex, 10).setValue(absErrorCm.toFixed(2));
-      }
 
       // Event Annotations & Row Color-Coding
       var tags = [];
