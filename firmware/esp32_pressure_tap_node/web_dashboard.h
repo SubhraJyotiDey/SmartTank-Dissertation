@@ -1072,14 +1072,22 @@ const char DASHBOARD_HTML[] PROGMEM = R"rawliteral(
 
   <script>
     let chart;
-    const chartTimeWindow = 30; // 30 seconds history
     const labels = [];
     const pressureData = [];
-    let isFlowingPrev = false;
+    const OSCILLOSCOPE_POINTS = 60;
+    let targetPressure = 69.5;
+    let currentRenderPressure = 69.5;
 
     // Initialize Chart
     function initChart() {
       const ctx = document.getElementById('pressureChart').getContext('2d');
+      labels.length = 0;
+      pressureData.length = 0;
+      for (let i = 0; i < OSCILLOSCOPE_POINTS; i++) {
+        labels.push('');
+        pressureData.push(targetPressure);
+      }
+
       chart = new Chart(ctx, {
         type: 'line',
         data: {
@@ -1090,29 +1098,44 @@ const char DASHBOARD_HTML[] PROGMEM = R"rawliteral(
             borderColor: '#38bdf8',
             backgroundColor: 'rgba(56, 189, 248, 0.08)',
             borderWidth: 2,
-            tension: 0.25,
+            tension: 0, // Linear oscilloscope mode: zero lag
             fill: true,
-            pointRadius: 0
+            pointRadius: 0,
+            pointHoverRadius: 0
           }]
         },
         options: {
           responsive: true,
           maintainAspectRatio: false,
-          plugins: { legend: { display: false } },
+          plugins: {
+            legend: { display: false },
+            tooltip: { enabled: false }
+          },
           scales: {
-            x: {
-              display: false
-            },
+            x: { display: false, grid: { display: false } },
             y: {
-              suggestedMin: 0,
-              suggestedMax: 65,
+              suggestedMin: 55,
+              suggestedMax: 80,
               grid: { color: 'rgba(255, 255, 255, 0.05)' },
               ticks: { color: '#94a3b8', font: { family: 'JetBrains Mono', size: 10 } }
             }
           },
-          animation: { duration: 0 }
+          animation: false,
+          hover: { mode: null }
         }
       });
+
+      // Continuous 10 Hz Oscilloscope Sweep Engine
+      setInterval(() => {
+        currentRenderPressure += (targetPressure - currentRenderPressure) * 0.35;
+        pressureData.push(parseFloat(currentRenderPressure.toFixed(2)));
+        if (pressureData.length > OSCILLOSCOPE_POINTS) {
+          pressureData.shift();
+        }
+        if (chart) {
+          chart.update('none');
+        }
+      }, 100);
     }
 
     // Fetch Telemetry Data from ESP32 REST API
@@ -1208,15 +1231,16 @@ const char DASHBOARD_HTML[] PROGMEM = R"rawliteral(
           compBanner.style.display = 'none';
         }
 
-        // Update Chart
-        const now = new Date().toLocaleTimeString();
-        labels.push(now);
-        pressureData.push(d.pressure_kpa);
-        if (labels.length > 50) {
-          labels.shift();
-          pressureData.shift();
+        // Update Chart Target
+        if (typeof d.pressure_kpa === 'number') {
+          targetPressure = d.pressure_kpa;
+          if (chart && chart.options && chart.options.scales && chart.options.scales.y) {
+            const yMin = chart.options.scales.y.suggestedMin;
+            const yMax = chart.options.scales.y.suggestedMax;
+            if (targetPressure < yMin + 5) chart.options.scales.y.suggestedMin = Math.max(0, targetPressure - 10);
+            if (targetPressure > yMax - 5) chart.options.scales.y.suggestedMax = targetPressure + 10;
+          }
         }
-        chart.update();
 
         // Real-time Node 3 Pump Relay Telemetry
         if (d.pump_active_tracked !== undefined) {

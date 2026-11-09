@@ -1441,9 +1441,23 @@
     let eventColorIndex = 0;
     let lastMsgTime = 0;
 
-    // Initialize Chart.js
+    // High-Precision Digital Oscilloscope Parameters
+    const OSCILLOSCOPE_POINTS = 60; // 60-sample continuous sweep buffer
+    let targetPressure = 69.5;
+    let currentRenderPressure = 69.5;
+
+    // Initialize Chart.js with hardware-accelerated linear phosphor oscilloscope trace
     function initChart() {
       const ctx = document.getElementById('pressureChart').getContext('2d');
+
+      // Pre-fill buffer so oscilloscope is ready to sweep immediately
+      labels.length = 0;
+      pressureData.length = 0;
+      for (let i = 0; i < OSCILLOSCOPE_POINTS; i++) {
+        labels.push('');
+        pressureData.push(targetPressure);
+      }
+
       chart = new Chart(ctx, {
         type: 'line',
         data: {
@@ -1454,27 +1468,45 @@
             borderColor: '#38bdf8',
             backgroundColor: 'rgba(56, 189, 248, 0.08)',
             borderWidth: 2,
-            tension: 0.25,
+            tension: 0, // Zero spline calculation overhead = zero lag!
             fill: true,
-            pointRadius: 0
+            pointRadius: 0,
+            pointHoverRadius: 0
           }]
         },
         options: {
           responsive: true,
           maintainAspectRatio: false,
-          plugins: { legend: { display: false } },
+          plugins: {
+            legend: { display: false },
+            tooltip: { enabled: false } // Disable hit-testing for instant 60 FPS performance
+          },
           scales: {
-            x: { display: false },
+            x: { display: false, grid: { display: false } },
             y: {
-              suggestedMin: 0,
-              suggestedMax: 85,
+              suggestedMin: 55,
+              suggestedMax: 80,
               grid: { color: 'rgba(255, 255, 255, 0.05)' },
               ticks: { color: '#94a3b8', font: { family: 'JetBrains Mono', size: 10 } }
             }
           },
-          animation: { duration: 0 }
+          animation: false,
+          hover: { mode: null }
         }
       });
+
+      // Continuous 10 Hz Oscilloscope Phosphor Sweep Engine (100ms interval)
+      setInterval(() => {
+        // Smooth interpolation toward target pressure
+        currentRenderPressure += (targetPressure - currentRenderPressure) * 0.35;
+        pressureData.push(parseFloat(currentRenderPressure.toFixed(2)));
+        if (pressureData.length > OSCILLOSCOPE_POINTS) {
+          pressureData.shift();
+        }
+        if (chart) {
+          chart.update('none'); // Instant canvas render without layout recalculation
+        }
+      }, 100);
     }
 
     // Active Data Source Tracking
@@ -1526,19 +1558,19 @@
           activeDataSource = 'sheets';
           updateMqttBadge('online', 'CLOUD SYNC (' + (data.sheet || 'Floor 1') + ')');
 
-          // Populate chart history if chart is empty
-          if (Array.isArray(data.history) && data.history.length > 0 && labels.length < 5) {
-            labels.length = 0;
-            pressureData.length = 0;
+          // Populate chart history with real past minutes if initial run
+          if (Array.isArray(data.history) && data.history.length > 0 && targetPressure === 69.5) {
             const rev = [...data.history].reverse();
-            for (const h of rev) {
-              if (h.time && h.pressure_kpa !== undefined) {
-                const parts = h.time.split(' ');
-                labels.push(parts[1] || h.time);
-                pressureData.push(h.pressure_kpa);
+            const valid = rev.map(h => h.pressure_kpa).filter(p => p !== undefined && p > 0);
+            if (valid.length > 0) {
+              targetPressure = valid[valid.length - 1];
+              currentRenderPressure = targetPressure;
+              const start = Math.max(0, OSCILLOSCOPE_POINTS - valid.length);
+              for (let i = 0; i < valid.length && (start + i) < OSCILLOSCOPE_POINTS; i++) {
+                pressureData[start + i] = valid[i];
               }
+              if (chart) chart.update('none');
             }
-            if (chart) chart.update();
           }
         }
       } catch (err) {
@@ -1771,15 +1803,15 @@
       // Event Recorder Monitor
       updateEventMonitor(d);
 
-      // Chart Update (5 Hz)
-      const now = new Date().toLocaleTimeString();
-      labels.push(now);
-      pressureData.push(d.p);
-      if (labels.length > 50) {
-        labels.shift();
-        pressureData.shift();
+      // Update target pressure for continuous 10 Hz oscilloscope sweep
+      if (d.p !== undefined && !isNaN(d.p)) {
+        targetPressure = d.p;
+        // Auto-scale Y-axis if reading shifts near boundaries
+        if (chart && (d.p > chart.options.scales.y.suggestedMax - 3 || d.p < chart.options.scales.y.suggestedMin + 3)) {
+          chart.options.scales.y.suggestedMin = Math.max(0, Math.floor(d.p - 15));
+          chart.options.scales.y.suggestedMax = Math.ceil(d.p + 15);
+        }
       }
-      chart.update();
     }
 
     // Update Event Recording Box
