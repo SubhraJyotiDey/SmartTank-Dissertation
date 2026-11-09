@@ -1654,6 +1654,9 @@
         mqttClient.subscribe(topicStatus, (err) => {
           if (!err) console.log('Subscribed to status:', topicStatus);
         });
+        mqttClient.subscribe('smarttank/dissertation/pump/status', (err) => {
+          if (!err) console.log('Subscribed to pump status:', 'smarttank/dissertation/pump/status');
+        });
       });
 
       mqttClient.on('message', (topic, message) => {
@@ -1665,7 +1668,7 @@
             activeDataSource = 'mqtt';
             updateMqttBadge('online', 'LIVE MQTT (5 Hz)');
             handleLiveTelemetry(data);
-          } else if (topic === topicStatus) {
+          } else if (topic === topicStatus || topic === 'smarttank/dissertation/pump/status') {
             handleStatusAck(data);
           }
         } catch (e) {
@@ -1864,6 +1867,12 @@
       if (d.msg) {
         showToast('ESP32: ' + d.msg);
       }
+      if (d.pump !== undefined) {
+        updatePumpStatusUI(d.pump, d.p_lock);
+      }
+      if (d.reason) {
+        showToast('Pump ' + (d.pump ? 'ON' : 'OFF') + ' (' + d.reason + ')');
+      }
     }
 
     // Send Commands over MQTT to ESP32
@@ -1874,6 +1883,9 @@
       }
       const payload = JSON.stringify(cmdObj);
       mqttClient.publish(topicCommand, payload);
+      if (cmdObj.cmd && cmdObj.cmd.startsWith('pump')) {
+        mqttClient.publish('smarttank/dissertation/pump/cmd', payload);
+      }
       console.log('🚀 Published Command:', payload, 'to topic:', topicCommand);
       return true;
     }

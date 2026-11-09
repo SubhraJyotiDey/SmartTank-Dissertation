@@ -5,8 +5,28 @@
 #include <ArduinoOTA.h>
 #include <HTTPClient.h>
 #include <WiFiClientSecure.h>
+#include <PubSubClient.h>
 #include "config.h"
 #include "cluster_protocol.h"
+
+// =========================================================================
+// MQTT GLOBAL CLOUD MESSAGING (FOR GITHUB PAGES SECURE WEBSOCKET CONTROL)
+// =========================================================================
+WiFiClient espMqttClient;
+PubSubClient mqttClient(espMqttClient);
+
+const char* MQTT_BROKER            = "broker.hivemq.com";
+const uint16_t MQTT_PORT           = 1883;
+const char* MQTT_TOPIC_COMMAND     = "smarttank/dissertation/tap/cmd";
+const char* MQTT_TOPIC_PUMP_CMD    = "smarttank/dissertation/pump/cmd";
+const char* MQTT_TOPIC_STATUS      = "smarttank/dissertation/tap/status";
+const char* MQTT_TOPIC_PUMP_STATUS = "smarttank/dissertation/pump/status";
+unsigned long lastMqttRetry        = 0;
+unsigned long lastMqttStatusPub    = 0;
+
+void publishMqttPumpStatus(const String& reason = "");
+void onMqttPumpMessage(char* topic, byte* payload, unsigned int length);
+void maintainMqtt();
 
 // =========================================================================
 // PEER HARDWARE ADDRESSES & DYNAMIC DISCOVERY
@@ -97,6 +117,7 @@ void setRelay(bool state, const String& reason) {
         Serial.printf("[PUMP] --- RELAY DE-ENERGIZED (OFF) --- Reason: %s (Ran for %lu s)\n", 
                       reason.c_str(), runtimeSec);
     }
+    publishMqttPumpStatus(reason);
 }
 
 // Built-in Status LED Active Signaling Routine
@@ -473,11 +494,86 @@ void handleStatusApi() {
     json += "\"wifi_channel\":" + String(WiFi.status() == WL_CONNECTED ? WiFi.channel() : lastKnownWifiChannel) + ",";
     json += "\"wifi_ip\":\"" + (WiFi.status() == WL_CONNECTED ? WiFi.localIP().toString() : "Offline") + "\",";
     json += "\"mac_address\":\"" + WiFi.macAddress() + "\",";
+    json += "\"mqtt_connected\":" + String(mqttClient.connected() ? "true" : "false") + ",";
     json += "\"firmware_version\":\"" + String(FIRMWARE_VERSION) + "\"";
     json += "}";
 
     server.sendHeader("Access-Control-Allow-Origin", "*");
     server.send(200, "application/json", json);
+}
+
+// =========================================================================
+// MQTT IMPLEMENTATION (DIRECT HIGH-SPEED WEBSOCKET CONTROL FROM GITHUB PAGES)
+// =========================================================================
+void publishMqttPumpStatus(const String& reason) {
+    if (!mqttClient.connected()) return;
+    unsigned long now = millis();
+    unsigned long runSec = pumpActive ? ((now - pumpStartTime) / 1000) : 0;
+    float watchdogSecLeft = pumpActive ? max(0.0f, (float)(WATCHDOG_TIMEOUT_MS - (now - lastHeartbeatTime)) / 1000.0f) : 0.0f;
+    char buf[256];
+    snprintf(buf, sizeof(buf),
+        "{\"pump\":%s,\"p_lock\":false,\"pump_state\":\"%s\",\"run_sec\":%lu,\"watchdog_left\":%.1f,\"reason\":\"%s\"}",
+        pumpActive ? "true" : "false", pumpActive ? "ON" : "OFF", runSec, watchdogSecLeft,
+        reason.length() > 0 ? reason.c_str() : lastShutdownReason.c_str());
+    mqttClient.publish(MQTT_TOPIC_PUMP_STATUS, buf);
+    mqttClient.publish(MQTT_TOPIC_STATUS, buf);
+}
+
+void onMqttPumpMessage(char* topic, byte* payload, unsigned int length) {
+    if (length == 0 || length >= 256) return;
+    char msg[256];
+    memcpy(msg, payload, length);
+    msg[length] = '\0';
+    String msgStr = String(msg);
+    Serial.printf("[MQTT] Received command on %s: %s\n", topic, msgStr.c_str());
+
+    int cmdIdx = msgStr.indexOf("\"cmd\":");
+    if (cmdIdx == -1) cmdIdx = msgStr.indexOf("\"cmd\" :");
+    String cmd = "";
+    if (cmdIdx != -1) {
+        int q1 = msgStr.indexOf('"', cmdIdx + 6);
+        int q2 = msgStr.indexOf('"', q1 + 1);
+        if (q1 != -1 && q2 != -1) cmd = msgStr.substring(q1 + 1, q2);
+    }
+
+    int stateIdx = msgStr.indexOf("\"state\":");
+    if (stateIdx == -1) stateIdx = msgStr.indexOf("\"state\" :");
+    int state = -1;
+    if (stateIdx != -1) {
+        state = msgStr.substring(stateIdx + 8).toInt();
+    }
+
+    if (cmd == "pump" || cmd == "pump_on" || cmd == "pump_off") {
+        bool targetOn = (cmd == "pump_on") || (cmd == "pump" && state == 1);
+        lastHeartbeatTime = millis(); // Reset safety watchdog
+        setRelay(targetOn, "Cloud MQTT Command");
+    }
+}
+
+void maintainMqtt() {
+    if (WiFi.status() != WL_CONNECTED) return;
+    unsigned long now = millis();
+    if (!mqttClient.connected()) {
+        if (now - lastMqttRetry >= 5000) {
+            lastMqttRetry = now;
+            String clientId = "ESP32Pump-" + String((uint32_t)ESP.getEfuseMac(), HEX);
+            espMqttClient.setTimeout(3000); // 3 seconds socket timeout
+            if (mqttClient.connect(clientId.c_str())) {
+                Serial.println(F("[MQTT] ✅ Node 3 Connected to Global HiveMQ Broker!"));
+                mqttClient.subscribe(MQTT_TOPIC_COMMAND);
+                mqttClient.subscribe(MQTT_TOPIC_PUMP_CMD);
+                publishMqttPumpStatus("Node 3 Online & Armed");
+            } else {
+                Serial.printf("[MQTT] Node 3 HiveMQ connect failed (rc=%d)\n", mqttClient.state());
+            }
+        }
+    } else {
+        mqttClient.loop();
+        if (pumpActive && (now - lastMqttStatusPub >= 3000)) {
+            lastMqttStatusPub = now;
+            publishMqttPumpStatus("Telemetry Sync");
+        }
+    }
 }
 
 // =========================================================================
@@ -557,6 +653,11 @@ void setup() {
     server.enableCORS(true);
     server.begin();
     Serial.println("[HTTP] Node 3 Web Server started on port 80");
+
+    // 6. Global MQTT Client for Direct GitHub Pages Web Control
+    mqttClient.setServer(MQTT_BROKER, MQTT_PORT);
+    mqttClient.setCallback(onMqttPumpMessage);
+    mqttClient.setBufferSize(512);
 }
 
 // =========================================================================
@@ -571,6 +672,9 @@ void loop() {
 
     // Background Wi-Fi Auto-Reconnect & Channel Locking
     maintainWiFi();
+
+    // Global MQTT Cloud Message Service (Bidirectional HiveMQ Broker)
+    maintainMqtt();
 
     unsigned long now = millis();
 
