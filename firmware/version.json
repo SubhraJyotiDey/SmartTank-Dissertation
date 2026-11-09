@@ -1,14 +1,19 @@
 {
   "firmware_version": "1.2.8",
-  "published_at": "2026-11-09T11:55:00Z",
+  "published_at": "2026-11-09T15:00:00Z",
   "pressure_node": {
     "version": "1.2.8",
     "filename": "pressure_node_firmware.bin",
-    "description": "Pressure Tap Node with zero-loss offline rollback, Core 1 decoupled drain, 8KB task stack, and 10-sample batching."
+    "description": "Floor 1 Pressure Tap Node with ESP-NOW auto-discovery, sub-10ms Node 2 telemetry receiver, and Core 1 decoupled drain."
   },
   "ultrasonic_node": {
     "version": "1.2.8",
     "filename": "ultrasonic_node_firmware.bin",
-    "description": "Ultrasonic Node with zero-loss offline rollback, 10-sample batching, and 35s timeout."
+    "description": "Ultrasonic Tank Node with ESP-NOW fast broadcast, emergency overflow pump cutoff, and 10-sample batching."
+  },
+  "pump_node": {
+    "version": "1.2.8",
+    "filename": "pump_node_firmware.bin",
+    "description": "Pump Relay Node with active built-in LED signaling (2Hz on relay active), dynamic peer discovery, maintainWiFi loop, and web UI."
   }
 }

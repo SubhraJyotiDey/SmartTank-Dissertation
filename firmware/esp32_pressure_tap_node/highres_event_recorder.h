@@ -45,6 +45,7 @@ private:
     int currentUploadChunk = 0;
     int totalUploadChunks = 0;
     String uploadStatusText = "Idle";
+    TaskHandle_t rooftopTaskHandle = NULL;
     TaskHandle_t uploadTaskHandle = NULL;
 
     // Rooftop background poller task running on Core 0 (Zero impact on Core 1 sampling)
@@ -272,7 +273,17 @@ public:
     HighResEventRecorder() {}
 
     void begin() {
-        xTaskCreatePinnedToCore(rooftopWorkerTask, "RooftopPoller", 4096, this, 1, NULL, 0);
+        xTaskCreatePinnedToCore(rooftopWorkerTask, "RooftopPoller", 4096, this, 1, &rooftopTaskHandle, 0);
+    }
+
+    void suspendTasks() {
+        if (rooftopTaskHandle != NULL) vTaskSuspend(rooftopTaskHandle);
+        if (uploadTaskHandle != NULL) vTaskSuspend(uploadTaskHandle);
+    }
+
+    void resumeTasks() {
+        if (rooftopTaskHandle != NULL) vTaskResume(rooftopTaskHandle);
+        if (uploadTaskHandle != NULL) vTaskResume(uploadTaskHandle);
     }
 
     void setScriptUrl(const String& url) {
@@ -288,6 +299,13 @@ public:
     String getUploadStatus() const { return uploadStatusText; }
     float getRooftopDist() const { return cachedRooftopDist; }
     float getRooftopLevel() const { return cachedRooftopLevel; }
+    bool isRooftopOnline() const { return rooftopOnline; }
+
+    void setRooftopData(float dist, float lvl) {
+        if (dist > 0.0f && dist < 400.0f) cachedRooftopDist = dist;
+        if (lvl >= 0.0f && lvl <= 100.0f) cachedRooftopLevel = lvl;
+        rooftopOnline = true;
+    }
 
     float getElapsedSec() const {
         if (!recordingActive) return 0.0f;

@@ -7,10 +7,10 @@
 // 1. PIN DEFINITIONS & RELAY HARDWARE MAPPING
 // =========================================================================
 // Safe boot GPIOs on ESP32: GPIO 16, 4, 17, 18, 19
-#define PIN_RELAY               16      // GPIO connected to D965 Base (via 1k resistor)
-#define RELAY_ACTIVE_LEVEL      HIGH    // HIGH for NPN Transistor (D965) driving JQX-15F (T90) relay
+#define PIN_RELAY               16      // GPIO connected to D965 Base (via 1k resistor) or Relay Module IN
+#define RELAY_ACTIVE_LEVEL      HIGH    // HIGH for NPN Transistor (D965); set LOW if active-LOW relay module
 
-#define PIN_STATUS_LED          2       // Built-in status LED (GPIO 2)
+#define PIN_STATUS_LED          2       // Built-in status LED (GPIO 2 on standard ESP32 DevKit)
 
 // =========================================================================
 // 2. WI-FI & OVER-THE-AIR (OTA) SETTINGS
@@ -27,8 +27,8 @@
 // =========================================================================
 // 3. SAFETY WATCHDOG & MOTOR TIMEOUTS
 // =========================================================================
-// Fail-safe: If Node 1 stops sending heartbeats during pumping, cut relay after 10s
-#define WATCHDOG_TIMEOUT_MS     10000UL // 10 seconds
+// Fail-safe: If Node 1 stops sending heartbeats during pumping, cut relay after 15s
+#define WATCHDOG_TIMEOUT_MS     15000UL // 15 seconds (resilient to transient HTTPS uploads)
 
 // Absolute safety cutoff: Max allowable continuous runtime (protects against empty sump / pipe burst)
 #define MAX_RUN_TIME_MS         2100000UL // 35 minutes
@@ -37,6 +37,6 @@
 // Set to 5s for rapid bench testing (Change to 300000UL / 5 min for permanent production deployment)
 #define MIN_COOLDOWN_MS         5000UL
 
-#define FIRMWARE_VERSION        "1.0.0"
+#define FIRMWARE_VERSION        "1.2.8"
 
 #endif

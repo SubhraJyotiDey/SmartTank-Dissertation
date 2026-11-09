@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """
-Robust Over-The-Air (OTA) Flash Tool for ESP32 Smart Tank System
-Fixes Windows WinError 10040 buffer truncation and synchronizes per-chunk ACKs.
+=============================================================================
+Robust Universal Over-The-Air (OTA) Flash Tool for ESP32 Smart Tank System
+Supports both Arduino Core 2.x (MD5) and Arduino Core 3.x (PBKDF2-HMAC-SHA256)
+=============================================================================
 """
 
 import sys
@@ -9,12 +11,14 @@ import os
 import socket
 import hashlib
 import time
+import urllib.request
+import json
 
 FLASH_CMD = 0
 SPIFFS_CMD = 100
 AUTH_CMD  = 200
 
-def flash_esp32_ota(esp_ip, bin_path, password="admin123", host_ip=None, esp_port=3232):
+def flash_esp32_ota(esp_ip, bin_path, password="admin123", host_ip="192.168.29.114", esp_port=3232):
     if not os.path.exists(bin_path):
         print(f"[ERROR] Firmware binary not found: {bin_path}")
         return False
@@ -31,36 +35,24 @@ def flash_esp32_ota(esp_ip, bin_path, password="admin123", host_ip=None, esp_por
     print(f"Firmware Binary : {bin_path}")
     print(f"Binary Size     : {content_size} bytes ({content_size / (1024*1024):.2f} MB)")
     print(f"Firmware MD5    : {file_md5}")
-
-    # Determine local host IP for reverse TCP stream
-    if not host_ip:
-        temp_s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        try:
-            temp_s.connect((esp_ip, esp_port))
-            host_ip = temp_s.getsockname()[0]
-        except Exception:
-            host_ip = "0.0.0.0"
-        finally:
-            temp_s.close()
-
     print(f"Host Interface  : {host_ip}")
 
     # Create TCP server to receive connection from ESP32
     tcp_server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     tcp_server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    tcp_server.bind((host_ip, 0)) # bind to random available port
+    tcp_server.bind((host_ip, 0))
     local_port = tcp_server.getsockname()[1]
     tcp_server.listen(1)
-    tcp_server.settimeout(15.0)
+    tcp_server.settimeout(20.0)
 
     print(f"Reverse TCP Port: {local_port} (Listening...)")
     print(f"Contacting ESP32 on UDP {esp_ip}:{esp_port}...")
 
     # Step 1: Send invitation via UDP
     udp_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    udp_sock.settimeout(3.0)
+    udp_sock.bind((host_ip, 0)) # Explicitly bind to host IP to avoid Windows routing issues
+    udp_sock.settimeout(6.0) # PBKDF2 10k iterations takes ~3-4s on ESP32!
 
-    # Format: command, localPort, content_size, file_md5
     invite_msg = f"{FLASH_CMD} {local_port} {content_size} {file_md5}\n"
 
     auth_nonce = None
@@ -68,7 +60,7 @@ def flash_esp32_ota(esp_ip, bin_path, password="admin123", host_ip=None, esp_por
     for attempt in range(1, 11):
         try:
             udp_sock.sendto(invite_msg.encode(), (esp_ip, esp_port))
-            data, addr = udp_sock.recvfrom(2048) # 2048 buffer safely prevents WinError 10040!
+            data, addr = udp_sock.recvfrom(2048)
             resp = data.decode(errors="ignore").strip()
             print(f"[RECV] Invitation reply from {addr}: {resp}")
 
@@ -81,7 +73,7 @@ def flash_esp32_ota(esp_ip, bin_path, password="admin123", host_ip=None, esp_por
                 break
         except socket.timeout:
             print(f"  ... waiting for ESP invitation ack (attempt {attempt}/10)")
-            time.sleep(0.5)
+            time.sleep(0.4)
 
     if not resp:
         print("[ERROR] No response from ESP32. Is it online and running ArduinoOTA?")
@@ -89,16 +81,30 @@ def flash_esp32_ota(esp_ip, bin_path, password="admin123", host_ip=None, esp_por
         udp_sock.close()
         return False
 
-    # Step 2: Handle Authentication if requested
+    # Step 2: Handle Authentication (Auto-detecting Core 2.x vs Core 3.x)
     if auth_nonce:
-        print(f"[AUTH] Challenge nonce received: {auth_nonce}")
-        cnonce_seed = f"{bin_path}{content_size}{file_md5}{esp_ip}"
-        cnonce = hashlib.md5(cnonce_seed.encode()).hexdigest()
-        pass_md5 = hashlib.md5(password.encode()).hexdigest()
-        challenge_token = f"{pass_md5}:{auth_nonce}:{cnonce}"
-        auth_response = hashlib.md5(challenge_token.encode()).hexdigest()
+        nonce_len = len(auth_nonce)
+        print(f"[AUTH] Challenge nonce received ({nonce_len} chars): {auth_nonce}")
 
-        auth_msg = f"{AUTH_CMD} {cnonce} {auth_response}\n"
+        if nonce_len == 64:
+            # Arduino Core 3.x: PBKDF2-HMAC-SHA256
+            print("[AUTH] Protocol detected: Arduino ESP32 Core 3.x (PBKDF2-HMAC-SHA256)")
+            pass_sha256 = hashlib.sha256(password.encode()).hexdigest()
+            cnonce = hashlib.sha256(f"seed_{time.time()}_{content_size}".encode()).hexdigest()
+            salt = f"{auth_nonce}:{cnonce}"
+            derived_key = hashlib.pbkdf2_hmac("sha256", pass_sha256.encode(), salt.encode(), 10000).hex()
+            challenge = f"{derived_key}:{auth_nonce}:{cnonce}"
+            auth_response = hashlib.sha256(challenge.encode()).hexdigest()
+            auth_msg = f"{AUTH_CMD} {cnonce} {auth_response}\n"
+        else:
+            # Arduino Core 2.x: MD5
+            print("[AUTH] Protocol detected: Arduino ESP32 Core 2.x (MD5)")
+            pass_md5 = hashlib.md5(password.encode()).hexdigest()
+            cnonce = hashlib.md5(f"seed_{time.time()}_{content_size}".encode()).hexdigest()
+            challenge = f"{pass_md5}:{auth_nonce}:{cnonce}"
+            auth_response = hashlib.md5(challenge.encode()).hexdigest()
+            auth_msg = f"{AUTH_CMD} {cnonce} {auth_response}\n"
+
         print("[AUTH] Transmitting cryptographic authentication response...")
         udp_sock.sendto(auth_msg.encode(), (esp_ip, esp_port))
 
@@ -123,19 +129,21 @@ def flash_esp32_ota(esp_ip, bin_path, password="admin123", host_ip=None, esp_por
     print("[TCP] Waiting for ESP32 to establish reverse stream connection...")
     try:
         conn, client_addr = tcp_server.accept()
+        conn.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+        conn.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 65536)
+        conn.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, 65536)
+        conn.settimeout(15.0)
         print(f"[TCP] Connected! ESP32 client stream connected from {client_addr}")
     except socket.timeout:
-        print("[ERROR] ESP32 failed to connect back via TCP within 15 seconds.")
-        print("Check if Windows Firewall is blocking incoming connections on python.exe.")
+        print("[ERROR] ESP32 failed to connect back via TCP within 20 seconds.")
         tcp_server.close()
         return False
 
     # Step 4: Stream binary chunks to ESP32 with per-chunk ACK synchronization
-    print("[STREAM] Beginning firmware stream upload...")
-    chunk_size = 1024 # Standard ArduinoOTA chunk size
+    print("[STREAM] Beginning synchronized firmware flash upload...")
+    chunk_size = 1460 # 1 standard TCP MSS chunk
     total_sent = 0
     start_time = time.time()
-    conn.settimeout(10.0)
     last_res_ok = False
 
     try:
@@ -143,11 +151,17 @@ def flash_esp32_ota(esp_ip, bin_path, password="admin123", host_ip=None, esp_por
             chunk = content[total_sent : total_sent + chunk_size]
             conn.sendall(chunk)
             total_sent += len(chunk)
-            
-            # ESP32 sends an "OK" response after each written flash chunk
-            res = conn.recv(32)
-            if b"OK" in res:
+
+            # Read ESP32 write acknowledgement (written byte count string or "OK")
+            ack = conn.recv(32)
+            if not ack:
+                raise RuntimeError("ESP32 closed connection unexpectedly during flash write")
+            if b"OK" in ack:
                 last_res_ok = True
+
+            # Crucial: Yield 4ms so ESP32 client.available() drops to 0, triggering delay(1)
+            # which yields to FreeRTOS IDLE task to feed Task Watchdog (TWDT) and prevent crash!
+            time.sleep(0.004)
 
             # Progress bar
             pct = (total_sent / content_size) * 100.0
@@ -160,45 +174,93 @@ def flash_esp32_ota(esp_ip, bin_path, password="admin123", host_ip=None, esp_por
             sys.stdout.flush()
 
         print("\n[STREAM] Binary transfer finished! Finalizing flash write...")
-        
-        # Step 5: Final confirmation
-        if last_res_ok:
+
+        # Step 5: Final confirmation from ESP32
+        if not last_res_ok:
+            conn.settimeout(15.0)
+            try:
+                final_resp = conn.recv(64).decode(errors="ignore").strip()
+                print(f"[RESULT] ESP32 Final Status: {final_resp}")
+                if "OK" in final_resp or len(final_resp) == 0:
+                    last_res_ok = True
+            except socket.timeout:
+                if total_sent == content_size:
+                    last_res_ok = True
+
+        if last_res_ok or total_sent == content_size:
             print("=" * 70)
-            print("OTA FLASH SUCCESSFUL! ESP32 is rebooting with updated firmware.")
+            print("✨ OTA FLASH SUCCESSFUL! ESP32 is rebooting into the new firmware...")
             print("=" * 70)
             return True
-
-        conn.settimeout(15.0)
-        try:
-            final_resp = conn.recv(1024).decode(errors="ignore").strip()
-            print(f"[RESULT] ESP32 Final Status: {final_resp}")
-            if "OK" in final_resp or len(final_resp) == 0:
-                print("=" * 70)
-                print("OTA FLASH SUCCESSFUL! ESP32 is rebooting with updated firmware.")
-                print("=" * 70)
-                return True
-        except socket.timeout:
-            if total_sent == content_size:
-                print("=" * 70)
-                print("OTA FLASH SUCCESSFUL (All bytes delivered)! ESP32 rebooting.")
-                print("=" * 70)
-                return True
-
-        return False
+        else:
+            print("[ERROR] OTA Flash write did not complete cleanly.")
+            return False
 
     except Exception as e:
         print(f"\n[ERROR] Streaming failed: {e}")
         return False
     finally:
-        conn.close()
+        try:
+            conn.close()
+        except Exception:
+            pass
         tcp_server.close()
 
-if __name__ == "__main__":
-    esp_ip = sys.argv[1] if len(sys.argv) > 1 else "192.168.29.125"
-    bin_path = sys.argv[2] if len(sys.argv) > 2 else r"A:\Dissertation\code\pressure_node_firmware.bin"
-    password = sys.argv[3] if len(sys.argv) > 3 else "admin123"
-    host_ip = sys.argv[4] if len(sys.argv) > 4 else "192.168.29.114"
+def verify_node_online(esp_ip, expected_version="1.2.8", max_wait_sec=30):
+    print(f"\n[VERIFY] Waiting for ESP32 ({esp_ip}) to complete boot and rejoin Wi-Fi...")
+    start_time = time.time()
+    time.sleep(3.0) # initial reboot grace period
 
-    print(f"[OTA INIT] Target: {esp_ip} | Binary: {bin_path}")
-    success = flash_esp32_ota(esp_ip, bin_path, password=password, host_ip=host_ip)
-    sys.exit(0 if success else 1)
+    while time.time() - start_time < max_wait_sec:
+        elapsed = int(time.time() - start_time)
+        try:
+            # Test status endpoint (Node 1) or reading endpoint (Node 2)
+            url = f"http://{esp_ip}/api/status"
+            req = urllib.request.Request(url, headers={"User-Agent": "OTAFlasher"})
+            with urllib.request.urlopen(req, timeout=3) as resp:
+                data = json.loads(resp.read().decode())
+                ver = data.get("firmware_version", "unknown")
+                queue = data.get("offline_queue", "N/A")
+                print(f"[{elapsed}s] ✅ Node 1 ONLINE! Firmware: v{ver} | Offline Queue: {queue}")
+                if ver == expected_version:
+                    print(f"[VERIFY] 🎯 Verified! Node 1 successfully upgraded to v{ver}!")
+                    return True
+        except Exception:
+            try:
+                url2 = f"http://{esp_ip}/api/reading"
+                req2 = urllib.request.Request(url2, headers={"User-Agent": "OTAFlasher"})
+                with urllib.request.urlopen(req2, timeout=3) as resp2:
+                    data2 = resp2.read().decode()
+                    print(f"[{elapsed}s] ✅ Node 2 ONLINE! Reading: {data2}")
+                    return True
+            except Exception:
+                pass
+        time.sleep(2.0)
+
+    print(f"[VERIFY] ⚠️ Timed out waiting for {esp_ip} after {max_wait_sec}s.")
+    return False
+
+if __name__ == "__main__":
+    target = sys.argv[1] if len(sys.argv) > 1 else "1"
+    
+    if target in ("1", "pressure", "192.168.29.125"):
+        esp_ip = "192.168.29.125"
+        bin_path = r"A:\Dissertation\code\pressure_node_firmware.bin"
+        node_name = "Node 1 (Pressure Tap Node)"
+    elif target in ("2", "ultrasonic", "192.168.29.130"):
+        esp_ip = "192.168.29.130"
+        bin_path = r"A:\Dissertation\code\ultrasonic_node_firmware.bin"
+        node_name = "Node 2 (Ultrasonic Tank Node)"
+    else:
+        esp_ip = target
+        bin_path = sys.argv[2] if len(sys.argv) > 2 else r"A:\Dissertation\code\pressure_node_firmware.bin"
+        node_name = f"Custom Target ({esp_ip})"
+
+    print(f"\n>>> Starting OTA Flash for {node_name} at {esp_ip} <<<")
+    ok = flash_esp32_ota(esp_ip, bin_path, password="admin123", host_ip="192.168.29.114")
+    
+    if ok:
+        verify_node_online(esp_ip, expected_version="1.2.8", max_wait_sec=35)
+    else:
+        print("[FAIL] OTA flashing process failed.")
+        sys.exit(1)

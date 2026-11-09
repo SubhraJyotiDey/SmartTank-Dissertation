@@ -14,6 +14,7 @@
 // Message Types
 enum ClusterMsgType : uint8_t {
     MSG_CLUSTER_HEARTBEAT     = 0x10, // Periodic presence, RSSI & Channel beacon
+    MSG_ROOF_TELEMETRY        = 0x12, // Node 2 -> Node 1 & Node 3: Ground truth telemetry
     MSG_PUMP_COMMAND          = 0x20, // Node 1 -> Node 3: PUMP_ON / PUMP_OFF
     MSG_SAFETY_OVERRIDE       = 0x30, // Node 3 -> All: Emergency kill & lockout broadcast
     MSG_ROOF_OVERFLOW_STOP    = 0x40, // Node 2 -> Node 3: Direct overflow kill
@@ -33,6 +34,13 @@ struct ClusterPacket {
     uint8_t  senderMac[6];   // Full hardware MAC address for deterministic tie-breaking
 
     union {
+        // MSG_ROOF_TELEMETRY (Node 2 -> Node 1 & Node 3)
+        struct {
+            float    distanceCm;
+            float    waterLevelPct;
+            float    waterHeightCm;
+        } roofTelemetry;
+
         // MSG_PUMP_COMMAND (Node 1 -> Node 3)
         struct {
             uint8_t  command;         // 1 = PUMP_ON, 0 = PUMP_OFF

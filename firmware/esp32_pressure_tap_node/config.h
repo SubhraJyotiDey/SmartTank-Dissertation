@@ -58,9 +58,9 @@
 // =========================================================================
 // 3. DEFAULT CALIBRATION & TANK GEOMETRY (SAVED IN NVS/PREFERENCES)
 // =========================================================================
-// Default pressures (will be overridden when you calibrate via Web Server)
-#define DEFAULT_P_EMPTY_KPA     35.2f   // Elevation head pressure when tank is empty
-#define DEFAULT_P_FULL_KPA      47.2f   // Elevation head + full tank
+// Default pressures for Floor 1 Tap Node (Overridden by Flash NVS /api/calibrate)
+#define DEFAULT_P_EMPTY_KPA     61.4f   // Elevation head pressure at Floor 1 when tank is empty (61.4 kPa)
+#define DEFAULT_P_FULL_KPA      73.4f   // Elevation head + full tank at Floor 1 (73.4 kPa)
 #define DEFAULT_TANK_DEPTH_CM   122.0f  // Height of water in tank when 100% full (122 cm)
 #define DEFAULT_TANK_CAPACITY_L 1000.0f // Overhead tank volume (Liters)
 

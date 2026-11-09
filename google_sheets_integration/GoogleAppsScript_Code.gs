@@ -35,6 +35,14 @@ function onOpen() {
   } catch(e) {}
 }
 
+// =========================================================================
+// GLOBAL LOGGING TARGET CONFIGURATION
+// =========================================================================
+// Set active destination sheet tab for incoming dual-node telemetry:
+// "Floor 1"                     : Active 1st Floor Tap Node deployment
+// "WaterLevel_Synchronized_Logs": Historical 2nd Floor Tap Node deployment
+var DEFAULT_TELEMETRY_SHEET = "Floor 1";
+
 function doGet(e) {
   // ESP32 Node Data Logging
   if (e && e.parameter && (e.parameter.node || e.parameter.voltage || e.parameter.pressure_kpa || e.parameter.highres_upload || e.parameter.event_upload)) {
@@ -43,12 +51,12 @@ function doGet(e) {
 
   // Dashboard API: Get latest telemetry
   if (e && e.parameter && e.parameter.action === "get_latest") {
-    return getLatestDashboardData();
+    return getLatestDashboardData(e.parameter.sheet);
   }
 
   // Dashboard API: Clear all sheet data (start new 24h run)
   if (e && e.parameter && e.parameter.action === "clear_sheet") {
-    return clearAllSheetData();
+    return clearAllSheetData(e.parameter.sheet);
   }
 
   // Dashboard API: Start / Stop Manual Test Marker
@@ -134,11 +142,15 @@ function handleData(e) {
       records.push(params);
     }
 
-    var sheet = getOrCreateLogSheet();
+    var targetSheetName = params.sheet || (jsonBody && jsonBody.sheet) || DEFAULT_TELEMETRY_SHEET || "Floor 1";
+    var sheet = getOrCreateLogSheet(targetSheetName);
     var data = sheet.getDataRange().getValues();
     var timeRowMap = {};
     for (var r = 1; r < data.length; r++) {
-      var rowTime = String(data[r][0]);
+      var rawTime = data[r][0];
+      var rowTime = (rawTime instanceof Date) ?
+        Utilities.formatDate(rawTime, Session.getScriptTimeZone(), "yyyy-MM-dd HH:mm:00") :
+        String(rawTime).trim();
       timeRowMap[rowTime] = r + 1; // 1-indexed row in sheet
     }
 
@@ -356,22 +368,23 @@ function setManualTestConfig(testName, durationMin) {
 }
 
 // Clear all Sheet Data (Reset for fresh 24h run)
-function clearAllSheetData() {
+function clearAllSheetData(sheetToClear) {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var sheet = ss.getSheetByName("WaterLevel_Synchronized_Logs");
+  var targetName = sheetToClear || DEFAULT_TELEMETRY_SHEET || "Floor 1";
+  var sheet = ss.getSheetByName(targetName);
   if (sheet) {
     sheet.clear();
   }
-  getOrCreateLogSheet(); // Re-create pristine headers
+  getOrCreateLogSheet(targetName); // Re-create pristine headers
   return ContentService.createTextOutput(JSON.stringify({
     status: "success",
-    message: "Sheet wiped clean. Pristine 24-hr experiment headers created!"
+    message: "Sheet '" + targetName + "' wiped clean. Pristine 24-hr experiment headers created!"
   })).setMimeType(ContentService.MimeType.JSON);
 }
 
-function getOrCreateLogSheet() {
+function getOrCreateLogSheet(customName) {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var sheetName = "WaterLevel_Synchronized_Logs";
+  var sheetName = customName || DEFAULT_TELEMETRY_SHEET || "Floor 1";
   var sheet = ss.getSheetByName(sheetName);
 
   if (!sheet) {
@@ -540,11 +553,12 @@ function handleHighResEventUpload(params, jsonBody) {
   }
 }
 
-function fetchDashboardPayload() {
-  var sheet = getOrCreateLogSheet();
+function fetchDashboardPayload(customSheetName) {
+  var targetSheet = customSheetName || DEFAULT_TELEMETRY_SHEET || "Floor 1";
+  var sheet = getOrCreateLogSheet(targetSheet);
   var data = sheet.getDataRange().getValues();
   if (data.length <= 1) {
-    return { status: "empty", history: [], activeTest: getActiveManualTestName() };
+    return { status: "empty", sheet: targetSheet, history: [], activeTest: getActiveManualTestName() };
   }
 
   var history = [];
@@ -572,14 +586,15 @@ function fetchDashboardPayload() {
 
   return {
     status: "success",
+    sheet: targetSheet,
     latest: history[history.length - 1],
     history: history,
     activeTest: getActiveManualTestName()
   };
 }
 
-function getLatestDashboardData() {
-  var payload = fetchDashboardPayload();
+function getLatestDashboardData(customSheetName) {
+  var payload = fetchDashboardPayload(customSheetName);
   return ContentService.createTextOutput(JSON.stringify(payload))
     .setMimeType(ContentService.MimeType.JSON);
 }

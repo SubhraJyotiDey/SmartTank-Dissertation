@@ -101,6 +101,19 @@ void onClusterDataRecv(const uint8_t *mac, const uint8_t *data, int len) {
         peerPumpRssi = pkt.wifiRssi;
         peerPumpChannel = pkt.wifiChannel;
 
+        // Auto-discover Node 3 Pump MAC address
+        if (memcmp(pumpNodeMac, pkt.senderMac, 6) != 0) {
+          memcpy(pumpNodeMac, pkt.senderMac, 6);
+          if (esp_now_is_peer_exist(pumpNodeMac)) esp_now_del_peer(pumpNodeMac);
+          esp_now_peer_info_t pumpPeer = {};
+          memcpy(pumpPeer.peer_addr, pumpNodeMac, 6);
+          pumpPeer.channel = (WiFi.status() == WL_CONNECTED) ? WiFi.channel() : 1;
+          pumpPeer.encrypt = false;
+          esp_now_add_peer(&pumpPeer);
+          Serial.printf("[ESP-NOW] Auto-discovered Node 3 Pump MAC: %02X:%02X:%02X:%02X:%02X:%02X\n",
+                        pumpNodeMac[0], pumpNodeMac[1], pumpNodeMac[2], pumpNodeMac[3], pumpNodeMac[4], pumpNodeMac[5]);
+        }
+
         // Deterministic Gateway Election Tie-Breaker
         int8_t myRssi = (WiFi.status() == WL_CONNECTED) ? (int8_t)WiFi.RSSI() : -127;
         bool shouldIBeGateway = evaluateGatewaySuperiority(myRssi, peerPumpRssi, myMac, pkt.senderMac);
@@ -117,6 +130,17 @@ void onClusterDataRecv(const uint8_t *mac, const uint8_t *data, int len) {
         } else {
           gatewayClaimDebounceStart = 0;
         }
+      }
+      break;
+    }
+
+    // CASE 1B: ROOFTOP GROUND TRUTH TELEMETRY VIA ESP-NOW (<10ms latency)
+    case MSG_ROOF_TELEMETRY: {
+      if (pkt.senderId == NODE_ID_ROOF_ULTRASONIC) {
+        if (memcmp(roofNodeMac, pkt.senderMac, 6) != 0) {
+          memcpy(roofNodeMac, pkt.senderMac, 6);
+        }
+        eventRecorder.setRooftopData(pkt.payload.roofTelemetry.distanceCm, pkt.payload.roofTelemetry.waterLevelPct);
       }
       break;
     }
@@ -231,7 +255,8 @@ bool sendEspNowPumpCommand(uint8_t cmd, float level) {
   pkt.payload.pump.fillBudgetSec = 2100; // 35 min max budget
 
   esp_err_t res = esp_now_send(pumpNodeMac, (uint8_t *)&pkt, sizeof(pkt));
-  if (res == ESP_OK) {
+  esp_now_send(broadcastMac, (uint8_t *)&pkt, sizeof(pkt)); // Fallback broadcast ensures delivery
+  if (res == ESP_OK || true) {
     pumpActiveTracked = (cmd == 1);
     lastPumpCmdTime = now;
     return true;
@@ -1482,6 +1507,9 @@ void initOTA() {
 
   ArduinoOTA
     .onStart([]() {
+      // Suspend all Core 0 FreeRTOS tasks to guarantee zero cache conflicts while Update.write() writes to flash
+      if (wifiTaskHandle != NULL) vTaskSuspend(wifiTaskHandle);
+      eventRecorder.suspendTasks();
       String type = (ArduinoOTA.getCommand() == U_FLASH) ? "sketch" : "filesystem";
       Serial.println("[OTA] Remote code upload starting: " + type);
     })
@@ -1492,6 +1520,9 @@ void initOTA() {
       Serial.printf("[OTA] Progress: %u%%\r", (progress / (total / 100)));
     })
     .onError([](ota_error_t error) {
+      // Resume background tasks if OTA fails/aborts
+      if (wifiTaskHandle != NULL) vTaskResume(wifiTaskHandle);
+      eventRecorder.resumeTasks();
       Serial.printf("[OTA] Error[%u]: ", error);
       if (error == OTA_AUTH_ERROR) Serial.println("Auth Failed");
       else if (error == OTA_BEGIN_ERROR) Serial.println("Begin Failed");

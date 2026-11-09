@@ -9,11 +9,13 @@
 #include "cluster_protocol.h"
 
 // =========================================================================
-// PEER HARDWARE ADDRESSES
+// PEER HARDWARE ADDRESSES & DYNAMIC DISCOVERY
 // =========================================================================
-// Node 1 (Tap Pressure Node): E8:6B:EA:D4:57:68
-uint8_t tapNodeMac[6] = {0xE8, 0x6B, 0xEA, 0xD4, 0x57, 0x68};
+// Default fallback MACs (auto-updated dynamically on first received packet)
+uint8_t tapNodeMac[6]   = {0x28, 0x05, 0xA5, 0x25, 0x9D, 0x5C}; // Node 1 (Tap Pressure Node)
+uint8_t roofNodeMac[6]  = {0xE0, 0x8C, 0xFE, 0x32, 0x98, 0x7C}; // Node 2 (Rooftop Ultrasonic)
 uint8_t broadcastMac[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
+uint8_t myMac[6]        = {0};
 
 // =========================================================================
 // STATE VARIABLES
@@ -24,6 +26,9 @@ unsigned long pumpStopTime = 0;
 unsigned long lastStateChangeTime = 0;
 unsigned long lastHeartbeatTime = 0;
 unsigned long lastBroadcastTime = 0;
+unsigned long lastWifiCheck = 0;
+unsigned long wifiDisconnectStart = 0;
+uint8_t lastKnownWifiChannel = 1;
 
 uint16_t lastExecutedSeq = 0;
 float lastReportedLevel = 0.0f;
@@ -36,7 +41,6 @@ const unsigned long ANTI_CHATTER_DEADBAND_MS = 10000UL;
 bool isElectedGateway = false;
 int8_t peerTapRssi = -127;
 unsigned long gatewayClaimDebounceStart = 0;
-uint8_t myMac[6];
 
 struct PendingBulkChunk {
     bool hasData;
@@ -57,15 +61,20 @@ void setRelay(bool state, const String& reason);
 void broadcastHeartbeat();
 void broadcastSafetyOverride(uint8_t faultCode);
 bool forwardChunkToGoogleSheets(const String& csvPayload);
+void ensurePeerExists(const uint8_t* peerMac);
+void updateStatusLed();
+void maintainWiFi();
+void handleRootHtml();
+void handleStatusApi();
 
 // =========================================================================
-// RELAY HARDWARE DRIVER (D965 NPN ACTIVE-HIGH)
+// RELAY HARDWARE DRIVER & ACTIVE STATUS SIGNALING
 // =========================================================================
 void setRelay(bool state, const String& reason) {
     if (pumpActive == state) return;
 
-    // Enforce 10-second anti-chatter deadband (unless it's an emergency safety shutoff)
     unsigned long now = millis();
+    // Enforce anti-chatter deadband (unless emergency safety shutoff)
     if (!reason.startsWith("SAFETY") && (now - lastStateChangeTime < ANTI_CHATTER_DEADBAND_MS) && lastStateChangeTime != 0) {
         Serial.printf("[RELAY] Toggle rejected: Anti-chatter deadband active (%lu ms left)\n",
                       ANTI_CHATTER_DEADBAND_MS - (now - lastStateChangeTime));
@@ -77,18 +86,67 @@ void setRelay(bool state, const String& reason) {
 
     if (state) {
         digitalWrite(PIN_RELAY, RELAY_ACTIVE_LEVEL);
-        digitalWrite(PIN_STATUS_LED, HIGH);
         pumpStartTime = now;
         lastHeartbeatTime = now;
         Serial.printf("[PUMP] >>> RELAY ENERGIZED (ON) <<< Reason: %s\n", reason.c_str());
     } else {
         digitalWrite(PIN_RELAY, (RELAY_ACTIVE_LEVEL == LOW) ? HIGH : LOW);
-        digitalWrite(PIN_STATUS_LED, LOW);
         pumpStopTime = now;
         lastShutdownReason = reason;
         unsigned long runtimeSec = (now - pumpStartTime) / 1000;
         Serial.printf("[PUMP] --- RELAY DE-ENERGIZED (OFF) --- Reason: %s (Ran for %lu s)\n", 
                       reason.c_str(), runtimeSec);
+    }
+}
+
+// Built-in Status LED Active Signaling Routine
+void updateStatusLed() {
+    static unsigned long lastToggle = 0;
+    static bool ledState = false;
+    unsigned long now = millis();
+
+    // 1. Pump Active -> Continuous warning signaling cadence (250ms ON / 250ms OFF)
+    if (pumpActive) {
+        if (now - lastToggle >= 250) {
+            lastToggle = now;
+            ledState = !ledState;
+            digitalWrite(PIN_STATUS_LED, ledState ? HIGH : LOW);
+        }
+        return;
+    }
+
+    // 2. Cooldown Active after shutoff -> Fast warning strobe (100ms ON / 100ms OFF)
+    if (now - pumpStopTime < MIN_COOLDOWN_MS && pumpStopTime != 0) {
+        if (now - lastToggle >= 100) {
+            lastToggle = now;
+            ledState = !ledState;
+            digitalWrite(PIN_STATUS_LED, ledState ? HIGH : LOW);
+        }
+        return;
+    }
+
+    // 3. Normal Standby / Healthy -> Calm heartbeat flash (60ms pulse every 3 seconds)
+    unsigned long cycle = now % 3000;
+    if (cycle < 60) {
+        digitalWrite(PIN_STATUS_LED, HIGH);
+    } else {
+        digitalWrite(PIN_STATUS_LED, LOW);
+    }
+}
+
+// =========================================================================
+// ESP-NOW PEER MANAGEMENT
+// =========================================================================
+void ensurePeerExists(const uint8_t* peerMac) {
+    if (!esp_now_is_peer_exist(peerMac)) {
+        esp_now_peer_info_t peer = {};
+        memcpy(peer.peer_addr, peerMac, 6);
+        peer.channel = (WiFi.status() == WL_CONNECTED) ? WiFi.channel() : lastKnownWifiChannel;
+        peer.encrypt = false;
+        if (esp_now_add_peer(&peer) == ESP_OK) {
+            Serial.printf("[ESP-NOW] Auto-registered peer: %02X:%02X:%02X:%02X:%02X:%02X on Channel %d\n",
+                          peerMac[0], peerMac[1], peerMac[2], peerMac[3], peerMac[4], peerMac[5], peer.channel);
+        }
     }
 }
 
@@ -100,17 +158,19 @@ void onDataRecv(const uint8_t *mac, const uint8_t *data, int len) {
 
     ClusterPacket pkt;
     memcpy(&pkt, data, sizeof(ClusterPacket));
-
-    // 1. Sanity Check Magic Number
     if (pkt.magic != CLUSTER_MAGIC) return;
 
+    ensurePeerExists(mac);
     unsigned long now = millis();
 
     switch (pkt.msgType) {
 
         // CASE 1: PUMP COMMAND FROM NODE 1 (SLAVE ROLE)
         case MSG_PUMP_COMMAND: {
-            // Anti-Stale / Out-of-Order Check: Reject older sequence IDs
+            if (memcmp(tapNodeMac, mac, 6) != 0) {
+                memcpy(tapNodeMac, mac, 6);
+            }
+
             if (pkt.seqNumber <= lastExecutedSeq && (lastExecutedSeq - pkt.seqNumber < 30000)) {
                 return; // Drop duplicate/stale packet
             }
@@ -119,7 +179,6 @@ void onDataRecv(const uint8_t *mac, const uint8_t *data, int len) {
             lastHeartbeatTime = now; // Reset watchdog timer
 
             if (pkt.payload.pump.command == 1) {
-                // Command: START PUMP
                 if (!pumpActive && (now - pumpStopTime < MIN_COOLDOWN_MS) && pumpStopTime != 0) {
                     unsigned long waitLeft = (MIN_COOLDOWN_MS - (now - pumpStopTime)) / 1000;
                     Serial.printf("[PUMP] Start rejected: Motor cooling down (%lu s left)\n", waitLeft);
@@ -127,32 +186,45 @@ void onDataRecv(const uint8_t *mac, const uint8_t *data, int len) {
                 }
                 setRelay(true, "ESP-NOW Command from Node 1 (Level: " + String(lastReportedLevel, 1) + "%)");
             } else {
-                // Command: STOP PUMP (Tank Full / Routine cutoff)
                 setRelay(false, "ESP-NOW Routine Stop from Node 1");
             }
             break;
         }
 
-        // CASE 2: ROOFTOP DIRECT OVERFLOW STOP FROM NODE 2 (SLAVE ROLE)
+        // CASE 2: ROOFTOP DIRECT OVERFLOW STOP FROM NODE 2
         case MSG_ROOF_OVERFLOW_STOP: {
-            Serial.println("[PUMP] DIRECT OVERFLOW INTERRUPT FROM NODE 2 (ROOFTOP)!");
+            Serial.println("[PUMP] 🚨 DIRECT OVERFLOW INTERRUPT FROM NODE 2 (ROOFTOP)!");
             setRelay(false, "SAFETY: Node 2 Rooftop Overflow Cutoff");
             break;
         }
 
-        // CASE 3: PEER HEARTBEAT & GATEWAY ELECTION (COOPERATIVE ROLE)
+        // CASE 3: ROOFTOP GROUND TRUTH TELEMETRY FROM NODE 2
+        case MSG_ROOF_TELEMETRY: {
+            if (memcmp(roofNodeMac, mac, 6) != 0) {
+                memcpy(roofNodeMac, mac, 6);
+            }
+            lastReportedLevel = pkt.payload.roofTelemetry.waterLevelPct;
+            if (lastReportedLevel >= 98.0f && pumpActive) {
+                setRelay(false, "SAFETY: Water Level >= 98% (Node 2 Ultrasonic)");
+            }
+            break;
+        }
+
+        // CASE 4: PEER HEARTBEAT & GATEWAY ELECTION
         case MSG_CLUSTER_HEARTBEAT: {
             if (pkt.senderId == NODE_ID_TAP_PRESSURE) {
-                lastHeartbeatTime = now; // Reset watchdog timer on heartbeat from Node 1
+                if (memcmp(tapNodeMac, mac, 6) != 0) {
+                    memcpy(tapNodeMac, mac, 6);
+                }
+                lastHeartbeatTime = now; // Reset watchdog timer
                 peerTapRssi = pkt.wifiRssi;
 
-                // Evaluate Gateway role using deterministic tie-breaker
                 int8_t myRssi = (WiFi.status() == WL_CONNECTED) ? (int8_t)WiFi.RSSI() : -127;
                 bool shouldIBeGateway = evaluateGatewaySuperiority(myRssi, peerTapRssi, myMac, pkt.senderMac);
 
                 if (shouldIBeGateway != isElectedGateway) {
                     if (gatewayClaimDebounceStart == 0) {
-                        gatewayClaimDebounceStart = now; // Start 15s hysteresis debounce
+                        gatewayClaimDebounceStart = now;
                     } else if (now - gatewayClaimDebounceStart >= 15000UL) {
                         isElectedGateway = shouldIBeGateway;
                         gatewayClaimDebounceStart = 0;
@@ -166,7 +238,7 @@ void onDataRecv(const uint8_t *mac, const uint8_t *data, int len) {
             break;
         }
 
-        // CASE 4: BULK DATA FORWARDING (MASTER GATEWAY ROLE)
+        // CASE 5: BULK DATA FORWARDING (MASTER GATEWAY ROLE)
         case MSG_BULK_DATA_CHUNK: {
             if (isElectedGateway && WiFi.status() == WL_CONNECTED && !pendingProxyChunk.hasData) {
                 pendingProxyChunk.hasData = true;
@@ -223,7 +295,7 @@ void broadcastHeartbeat() {
     pkt.senderId = NODE_ID_PUMP_RELAY;
     pkt.msgType = MSG_CLUSTER_HEARTBEAT;
     pkt.seqNumber = hbSeq++;
-    pkt.wifiChannel = (WiFi.status() == WL_CONNECTED) ? WiFi.channel() : 1;
+    pkt.wifiChannel = (WiFi.status() == WL_CONNECTED) ? WiFi.channel() : lastKnownWifiChannel;
     pkt.wifiRssi = (WiFi.status() == WL_CONNECTED) ? (int8_t)WiFi.RSSI() : -127;
     pkt.isGateway = isElectedGateway ? 1 : 0;
     memcpy(pkt.senderMac, myMac, 6);
@@ -246,8 +318,141 @@ void broadcastSafetyOverride(uint8_t faultCode) {
 }
 
 // =========================================================================
-// WEB SERVER API
+// WI-FI CONNECTION MAINTENANCE & CHANNEL LOCKING
 // =========================================================================
+void maintainWiFi() {
+    unsigned long now = millis();
+    if (now - lastWifiCheck < 5000) return;
+    lastWifiCheck = now;
+
+    if (WiFi.status() == WL_CONNECTED) {
+        lastKnownWifiChannel = WiFi.channel();
+        wifiDisconnectStart = 0;
+        return;
+    }
+
+    if (wifiDisconnectStart == 0) wifiDisconnectStart = now;
+    unsigned long offlineSec = (now - wifiDisconnectStart) / 1000;
+
+    Serial.printf("[WIFI] Node 3 Auto-reconnecting to '%s' (Offline: %lu s)...\n", DEFAULT_WIFI_SSID, offlineSec);
+
+    if (offlineSec > 180) {
+        Serial.println(F("[WIFI] Clean Wi-Fi radio reset..."));
+        WiFi.disconnect(true);
+        delay(100);
+        WiFi.mode(WIFI_STA);
+        WiFi.setAutoReconnect(true);
+        WiFi.begin(DEFAULT_WIFI_SSID, DEFAULT_WIFI_PASS);
+        wifiDisconnectStart = now;
+    } else {
+        WiFi.reconnect();
+    }
+
+    // Keep ESP-NOW locked to last known channel even while disconnected
+    if (lastKnownWifiChannel > 0 && lastKnownWifiChannel <= 14) {
+        esp_wifi_set_channel(lastKnownWifiChannel, WIFI_SECOND_CHAN_NONE);
+    }
+}
+
+// =========================================================================
+// EMBEDDED WEB DASHBOARD & HTTP API
+// =========================================================================
+void handleRootHtml() {
+    unsigned long now = millis();
+    unsigned long runSec = pumpActive ? ((now - pumpStartTime) / 1000) : 0;
+    float watchdogSecLeft = pumpActive ? max(0.0f, (float)(WATCHDOG_TIMEOUT_MS - (now - lastHeartbeatTime)) / 1000.0f) : 0.0f;
+    unsigned long cooldownLeft = (!pumpActive && (now - pumpStopTime < MIN_COOLDOWN_MS) && pumpStopTime != 0) 
+                                 ? ((MIN_COOLDOWN_MS - (now - pumpStopTime)) / 1000) : 0;
+
+    String html = F("<!DOCTYPE html><html lang='en'><head><meta charset='UTF-8'><meta name='viewport' content='width=device-width,initial-scale=1.0'>"
+                    "<title>Node 3 - Pump Relay Controller</title>"
+                    "<style>"
+                    ":root{--bg:#0f172a;--card:#1e293b;--text:#f8fafc;--primary:#3b82f6;--danger:#ef4444;--success:#10b981;--warn:#f59e0b;}"
+                    "*{margin:0;padding:0;box-sizing:border-box;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;}"
+                    "body{background:var(--bg);color:var(--text);padding:1.5rem;display:flex;justify-content:center;}"
+                    ".container{max-width:540px;width:100%;display:flex;flex-direction:column;gap:1.25rem;}"
+                    ".card{background:var(--card);border-radius:1rem;padding:1.5rem;border:1px solid #334155;box-shadow:0 10px 15px -3px rgba(0,0,0,0.5);}"
+                    ".header{display:flex;justify-content:space-between;align-items:center;}"
+                    ".title{font-size:1.25rem;font-weight:700;letter-spacing:-0.025em;}"
+                    ".badge{padding:0.25rem 0.75rem;border-radius:9999px;font-size:0.875rem;font-weight:700;text-transform:uppercase;}"
+                    ".badge-on{background:rgba(239,68,68,0.2);color:var(--danger);border:1px solid var(--danger);box-shadow:0 0 12px rgba(239,68,68,0.4);}"
+                    ".badge-off{background:rgba(16,185,129,0.2);color:var(--success);border:1px solid var(--success);}"
+                    ".led-box{display:flex;align-items:center;gap:0.75rem;margin:1rem 0;padding:0.75rem 1rem;background:#0b1120;border-radius:0.75rem;border:1px solid #1e293b;}"
+                    ".led-dot{width:16px;height:16px;border-radius:50%;background:#475569;transition:all 0.2s;}"
+                    ".led-dot.pulsing{background:#3b82f6;box-shadow:0 0 15px #3b82f6;animation:blink 0.5s infinite;}"
+                    ".led-dot.idle{background:#10b981;box-shadow:0 0 8px #10b981;}"
+                    "@keyframes blink{0%,100%{opacity:1;transform:scale(1.1);}50%{opacity:0.3;transform:scale(0.9);}}"
+                    ".grid{display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin:1rem 0;}"
+                    ".stat-item{background:#0b1120;padding:1rem;border-radius:0.75rem;border:1px solid #1e293b;}"
+                    ".stat-label{font-size:0.75rem;color:#94a3b8;font-weight:600;text-transform:uppercase;}"
+                    ".stat-value{font-size:1.35rem;font-weight:700;margin-top:0.25rem;}"
+                    ".btn{display:block;width:100%;padding:0.85rem;border:none;border-radius:0.75rem;font-size:1rem;font-weight:700;cursor:pointer;transition:background 0.2s;margin-top:0.75rem;}"
+                    ".btn-danger{background:var(--danger);color:#fff;}"
+                    ".btn-danger:hover{background:#dc2626;}"
+                    ".btn-success{background:var(--success);color:#fff;}"
+                    ".btn-success:hover{background:#059669;}"
+                    ".footer{font-size:0.75rem;color:#64748b;text-align:center;line-height:1.4;}"
+                    "</style></head><body><div class='container'><div class='card'>"
+                    "<div class='header'><div class='title'>Node 3: Pump Controller</div>");
+
+    if (pumpActive) {
+        html += F("<div class='badge badge-on'>⚡ PUMP ON</div>");
+    } else {
+        html += F("<div class='badge badge-off'>💤 PUMP OFF</div>");
+    }
+
+    html += F("</div><div class='led-box'><div class='led-dot ");
+    if (pumpActive) html += F("pulsing");
+    else html += F("idle");
+    html += F("'></div><div style='font-size:0.85rem;'><b>Relay Built-in LED:</b> ");
+    if (pumpActive) html += F("<span style='color:var(--primary);'>Active Pulsing (2 Hz Alert Signal)</span>");
+    else html += F("<span style='color:var(--success);'>Standby Heartbeat (3s Pulse)</span>");
+
+    html += F("</div></div><div class='grid'>"
+              "<div class='stat-item'><div class='stat-label'>Tank Level</div><div class='stat-value' style='color:#38bdf8;'>");
+    html += String(lastReportedLevel, 1) + F("%</div></div>"
+              "<div class='stat-item'><div class='stat-label'>Safety Watchdog</div><div class='stat-value' style='color:");
+    html += (watchdogSecLeft < 5.0f && pumpActive) ? F("var(--danger)") : F("var(--text)");
+    html += F(";'>");
+    html += pumpActive ? (String(watchdogSecLeft, 1) + "s") : String("Armed");
+    html += F("</div></div><div class='stat-item'><div class='stat-label'>Runtime</div><div class='stat-value'>");
+    html += String(runSec / 60) + F("m ") + String(runSec % 60) + F("s</div></div>"
+              "<div class='stat-item'><div class='stat-label'>Cooldown</div><div class='stat-value'>");
+    html += (cooldownLeft > 0) ? (String(cooldownLeft) + "s") : String("Ready");
+    html += F("</div></div></div>"
+              "<div style='font-size:0.8rem;color:#94a3b8;margin-bottom:0.5rem;'><b>Last Shutoff:</b> ");
+    html += lastShutdownReason;
+    html += F("</div>");
+
+    if (pumpActive) {
+        html += F("<button class='btn btn-danger' onclick='controlPump(0)'>🛑 STOP PUMP NOW</button>");
+    } else {
+        html += F("<button class='btn btn-success' onclick='controlPump(1)'>⚡ START PUMP (MANUAL)</button>");
+    }
+
+    html += F("</div><div class='card' style='font-size:0.8rem;color:#94a3b8;'>"
+              "<div style='font-weight:700;color:#f8fafc;margin-bottom:0.5rem;'>📡 System & ESP-NOW Telemetry</div>"
+              "<div><b>MAC Address:</b> ");
+    html += WiFi.macAddress();
+    html += F("<br><b>Wi-Fi IP:</b> ");
+    html += (WiFi.status() == WL_CONNECTED) ? WiFi.localIP().toString() : F("Offline");
+    html += F("<br><b>Wi-Fi Channel:</b> ");
+    html += String((WiFi.status() == WL_CONNECTED) ? WiFi.channel() : lastKnownWifiChannel);
+    html += F("<br><b>Node 1 Tap RSSI:</b> ");
+    html += String(peerTapRssi) + F(" dBm"
+              "<br><b>Firmware Version:</b> v") + String(FIRMWARE_VERSION) + F("</div></div>"
+              "<div class='footer'>Smart Tank Automation • Google Antigravity Decentralized Architecture</div>"
+              "</div><script>"
+              "function controlPump(state){"
+              "if(!confirm(state ? 'Are you sure you want to START the high-power pump?' : 'STOP the pump?')) return;"
+              "fetch('/api/pump?state=' + state).then(r=>r.json()).then(d=>{location.reload();});"
+              "}"
+              "setTimeout(()=>{location.reload();}, 4000);"
+              "</script></body></html>");
+
+    server.send(200, "text/html", html);
+}
+
 void handleStatusApi() {
     unsigned long now = millis();
     unsigned long runSec = pumpActive ? ((now - pumpStartTime) / 1000) : 0;
@@ -265,7 +470,7 @@ void handleStatusApi() {
     json += "\"is_elected_gateway\":" + String(isElectedGateway ? "true" : "false") + ",";
     json += "\"peer_tap_rssi\":" + String(peerTapRssi) + ",";
     json += "\"wifi_rssi\":" + String(WiFi.status() == WL_CONNECTED ? WiFi.RSSI() : -127) + ",";
-    json += "\"wifi_channel\":" + String(WiFi.status() == WL_CONNECTED ? WiFi.channel() : 0) + ",";
+    json += "\"wifi_channel\":" + String(WiFi.status() == WL_CONNECTED ? WiFi.channel() : lastKnownWifiChannel) + ",";
     json += "\"wifi_ip\":\"" + (WiFi.status() == WL_CONNECTED ? WiFi.localIP().toString() : "Offline") + "\",";
     json += "\"mac_address\":\"" + WiFi.macAddress() + "\",";
     json += "\"firmware_version\":\"" + String(FIRMWARE_VERSION) + "\"";
@@ -275,6 +480,9 @@ void handleStatusApi() {
     server.send(200, "application/json", json);
 }
 
+// =========================================================================
+// SETUP & INITIALIZATION
+// =========================================================================
 void setup() {
     Serial.begin(115200);
     delay(200);
@@ -292,18 +500,23 @@ void setup() {
 
     Serial.print("[WIFI] Connecting to " DEFAULT_WIFI_SSID);
     int attempts = 0;
-    while (WiFi.status() != WL_CONNECTED && attempts < 15) {
-        delay(400);
+    while (WiFi.status() != WL_CONNECTED && attempts < 25) {
+        delay(300);
         Serial.print(".");
         attempts++;
     }
     Serial.println();
 
+    if (WiFi.status() == WL_CONNECTED) {
+        lastKnownWifiChannel = WiFi.channel();
+        Serial.printf("[WIFI] Connected! IP: %s | RSSI: %d dBm | Channel: %d\n",
+                      WiFi.localIP().toString().c_str(), WiFi.RSSI(), lastKnownWifiChannel);
+    } else {
+        Serial.println("[WIFI] Initial connect timed out. Continuous background maintainWiFi() active.");
+    }
+
     WiFi.macAddress(myMac);
-    Serial.printf("[PUMP NODE] MAC: %s | IP: %s | Channel: %d\n",
-                  WiFi.macAddress().c_str(), 
-                  WiFi.status() == WL_CONNECTED ? WiFi.localIP().toString().c_str() : "Offline",
-                  WiFi.channel());
+    Serial.printf("[PUMP NODE] MAC: %s\n", WiFi.macAddress().c_str());
 
     // 3. ESP-NOW Mesh Protocol Init
     if (esp_now_init() == ESP_OK) {
@@ -313,16 +526,12 @@ void setup() {
         // Add Broadcast Peer
         esp_now_peer_info_t bcastPeer = {};
         memcpy(bcastPeer.peer_addr, broadcastMac, 6);
-        bcastPeer.channel = WiFi.channel();
+        bcastPeer.channel = (WiFi.status() == WL_CONNECTED) ? WiFi.channel() : lastKnownWifiChannel;
         bcastPeer.encrypt = false;
         esp_now_add_peer(&bcastPeer);
 
-        // Add Node 1 Dedicated Peer
-        esp_now_peer_info_t tapPeer = {};
-        memcpy(tapPeer.peer_addr, tapNodeMac, 6);
-        tapPeer.channel = WiFi.channel();
-        tapPeer.encrypt = false;
-        esp_now_add_peer(&tapPeer);
+        // Add Node 1 Peer (Initial registration)
+        ensurePeerExists(tapNodeMac);
     }
 
     // 4. Over-The-Air Setup
@@ -332,6 +541,7 @@ void setup() {
     ArduinoOTA.begin();
 
     // 5. Web Server Routes
+    server.on("/", HTTP_GET, handleRootHtml);
     server.on("/api/status", HTTP_GET, handleStatusApi);
     server.on("/api/pump", HTTP_GET, []() {
         if (server.hasArg("state")) {
@@ -340,19 +550,29 @@ void setup() {
         }
     });
     server.begin();
+    Serial.println("[HTTP] Node 3 Web Server started on port 80");
 }
 
+// =========================================================================
+// MAIN RUNTIME LOOP
+// =========================================================================
 void loop() {
     ArduinoOTA.handle();
     server.handleClient();
+
+    // Active Status LED Signaling Routine (2 Hz when ON, 3s heartbeat when idle)
+    updateStatusLed();
+
+    // Background Wi-Fi Auto-Reconnect & Channel Locking
+    maintainWiFi();
 
     unsigned long now = millis();
 
     // --- AUTONOMOUS SAFETY BOSS (MASTER AUTHORITY OVERRIDES) ---
     if (pumpActive) {
-        // Watchdog 1: Lost heartbeat from Node 1 (> 10s)
+        // Watchdog 1: Lost heartbeat from Node 1 (> 15s)
         if (now - lastHeartbeatTime >= WATCHDOG_TIMEOUT_MS) {
-            setRelay(false, "SAFETY WATCHDOG: Lost ESP-NOW heartbeat (> 10s)");
+            setRelay(false, "SAFETY WATCHDOG: Lost ESP-NOW heartbeat (> 15s)");
             broadcastSafetyOverride(1); // Inform cluster that pump was tripped by watchdog
         }
 
@@ -386,5 +606,5 @@ void loop() {
         Serial.printf("[GATEWAY] Chunk #%u forward result: %s\n", pendingProxyChunk.chunkId, ok ? "SUCCESS" : "FAILED");
     }
 
-    delay(20);
+    delay(10);
 }
