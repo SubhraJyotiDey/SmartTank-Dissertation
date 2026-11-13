@@ -76,10 +76,10 @@
 // Water Hammer / Settling delay in milliseconds after tap closure
 #define SETTLING_DELAY_MS          3000
 
-// Direct ADC Sampling Mode: Digital software filters (oversampling & EMA) disabled
-// Gauge output is driven directly by hardware ADC conversions
-#define ADC_OVERSAMPLE_COUNT       1       // Direct 1:1 hardware conversion (no software oversampling)
-#define PRESSURE_EMA_ALPHA         1.0f    // Direct instantaneous passthrough (no low-pass EMA filter)
+// Hardware ADC Oversampling & Adaptive Noise Rejection:
+// 32-sample hardware conversions with trimmed mean eliminates RF/thermal jitter!
+#define ADC_OVERSAMPLE_COUNT       32      // 32 hardware conversions with trimmed mean
+#define PRESSURE_EMA_ALPHA         0.35f   // Dynamic responsive smoothing for fluid level
 
 // =========================================================================
 // 5. WI-FI & NETWORK SETTINGS (PRIMARY & PROXY EXTENDER)
@@ -128,11 +128,13 @@
 #define MQTT_TOPIC_COMMAND      "smarttank/dissertation/tap/cmd"
 #define MQTT_TOPIC_STATUS       "smarttank/dissertation/tap/status"
 // =========================================================================
-// 8. AUTOMATIC CLOUD OVER-THE-AIR (OTA) SELF-UPDATE (EVERY 15 MINUTES)
+// 8. AUTOMATIC CLOUD OVER-THE-AIR (OTA) SELF-UPDATE
 // =========================================================================
-#define FIRMWARE_VERSION            "1.3.1"
-#define AUTO_OTA_ENABLED            true
-#define OTA_CHECK_INTERVAL_MIN      15      // Check for new updates every 15 minutes
+#define FIRMWARE_VERSION            "1.3.2"
+// Disabled by default to prevent spontaneous reboots during live experiments.
+// Triggered on-demand via Web Dashboard ("Update Firmware Now") or ArduinoOTA port 3232.
+#define AUTO_OTA_ENABLED            false
+#define OTA_CHECK_INTERVAL_MIN      15
 #define OTA_NODE_NAME               "pressure_node"
 #define OTA_BIN_FILENAME            "pressure_node_firmware.bin"
 

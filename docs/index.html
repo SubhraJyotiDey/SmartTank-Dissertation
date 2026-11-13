@@ -808,7 +808,7 @@
         </div>
         <!-- Cloud OTA Version Badge (Click to Update Immediately) -->
         <div id="otaBadge" class="badge" onclick="sendUpdateFirmwareNow(0)" style="background: rgba(168,85,247,0.15); border-color: rgba(168,85,247,0.3); color: #c084fc; cursor: pointer;" title="Click to update firmware immediately on both nodes via Cloud OTA">
-          OTA: <span id="otaVersionText" style="margin-left:4px;">v1.3.1</span> ⚡
+          OTA: <span id="otaVersionText" style="margin-left:4px;">v1.3.2</span> ⚡
         </div>
         <!-- Local IP Link Pill (if user is on home network) -->
         <a id="localLink" href="http://192.168.29.125/" target="_blank" class="badge btn-secondary" style="color:var(--text-muted); text-decoration:none;" title="Open local node if on same home Wi-Fi">
@@ -1197,7 +1197,7 @@
             <div>• Hostname: <span style="color:#f8fafc;">esp32-tap-pressure</span></div>
             <div>• OTA Port: <span style="color:#f8fafc;">3232</span> | Password: <span style="color:#f8fafc;">admin123</span></div>
             <div>• Firmware Binary: <span style="color:#38bdf8;">pressure_node_firmware.bin</span></div>
-            <div>• Installed Version: <span style="color:#34d399; font-weight:700;">v1.3.0</span></div>
+            <div>• Installed Version: <span style="color:#34d399; font-weight:700;">v1.3.2</span></div>
           </div>
           <button class="btn" style="width: 100%; background: rgba(56, 189, 248, 0.15); border: 1px solid rgba(56, 189, 248, 0.4); color: #38bdf8; font-weight: 600;" onclick="sendUpdateFirmwareNow(1)">
             ⚡ Flash Node 1 (Pressure) Now
@@ -1214,7 +1214,7 @@
             <div>• Hostname: <span style="color:#f8fafc;">esp32-tank-ultrasonic</span></div>
             <div>• OTA Port: <span style="color:#f8fafc;">3232</span> | Password: <span style="color:#f8fafc;">admin123</span></div>
             <div>• Firmware Binary: <span style="color:#facc15;">ultrasonic_node_firmware.bin</span></div>
-            <div>• Installed Version: <span style="color:#34d399; font-weight:700;">v1.3.0</span></div>
+            <div>• Installed Version: <span style="color:#34d399; font-weight:700;">v1.3.2</span></div>
           </div>
           <button class="btn" style="width: 100%; background: rgba(234, 179, 8, 0.15); border: 1px solid rgba(234, 179, 8, 0.4); color: #fde047; font-weight: 600;" onclick="sendUpdateFirmwareNow(2)">
             ⚡ Flash Node 2 (Ultrasonic) Now
@@ -1925,18 +1925,39 @@
     function sendStartEventCmd() {
       const name = document.getElementById('highResEventName').value.trim() || 'Tap Transient Event';
       const dur = parseFloat(document.getElementById('highResDurationSec').value) || 30;
+      
+      // 1. MQTT Cloud Path
       publishCommand({
         cmd: 'start_event',
         name: name,
         duration: dur,
         color: eventColorIndex++
       });
-      showToast('Starting 10 Hz Event: ' + name);
+
+      // 2. Direct LAN HTTP Fallback Path
+      try {
+        fetch('http://192.168.29.125/api/event/start?name=' + encodeURIComponent(name) + '&duration=' + dur + '&color_idx=' + (eventColorIndex % 8), {
+          method: 'POST',
+          mode: 'no-cors'
+        }).catch(() => {});
+      } catch (e) {}
+
+      showToast('🔴 Starting 10 Hz Burst Event: ' + name);
     }
 
     function sendStopEventCmd() {
+      // 1. MQTT Cloud Path
       publishCommand({ cmd: 'stop_event' });
-      showToast('Stopping event. Streaming to Sheet 2...');
+
+      // 2. Direct LAN HTTP Fallback Path
+      try {
+        fetch('http://192.168.29.125/api/event/stop', {
+          method: 'POST',
+          mode: 'no-cors'
+        }).catch(() => {});
+      } catch (e) {}
+
+      showToast('⏹️ Stopping event. Streaming chunks to Sheet 2...');
     }
 
     function sendCalibrateCmd(type) {

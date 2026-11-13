@@ -45,29 +45,6 @@ private:
     String uploadStatusText = "Idle";
     unsigned long lastChunkPostTime = 0;
 
-    void fetchRooftopDistance() {
-        if (WiFi.status() != WL_CONNECTED) return;
-        HTTPClient http;
-        http.setTimeout(100); // 100 ms max timeout to prevent loop stutter
-        if (http.begin(rooftopApiUrl)) {
-            int code = http.GET();
-            if (code == HTTP_CODE_OK) {
-                String payload = http.getString();
-                int distIdx = payload.indexOf("\"distance_cm\":");
-                if (distIdx != -1) {
-                    float d = payload.substring(distIdx + 14).toFloat();
-                    if (d > 0.0f && d < 400.0f) cachedRooftopDist = d;
-                }
-                int lvlIdx = payload.indexOf("\"level_pct\":");
-                if (lvlIdx != -1) {
-                    float l = payload.substring(lvlIdx + 12).toFloat();
-                    if (l >= 0.0f && l <= 100.0f) cachedRooftopLevel = l;
-                }
-            }
-            http.end();
-        }
-    }
-
 public:
     HighResEventRecorder() {}
 
@@ -100,6 +77,13 @@ public:
     }
 
     bool startEvent(const String& name, float durationSec, int colorIdx = 0) {
+        // Auto-recover if previous upload got stalled for > 120s
+        if (uploadingActive && (millis() - lastChunkPostTime > 120000)) {
+            uploadingActive = false;
+            if (readBuffer) readBuffer.close();
+            SPIFFS.remove(bufferPath);
+        }
+
         if (recordingActive || uploadingActive) return false;
 
         eventName = name.length() > 0 ? name : "Manual Tap Event";
@@ -129,9 +113,6 @@ public:
         recordingActive = true;
         uploadStatusText = "Recording at 10 Hz...";
 
-        // Fetch fresh initial rooftop benchmark
-        fetchRooftopDistance();
-
         Serial.printf("\n===========================================================\n");
         Serial.printf(" [HIGH-RES] 🔴 STARTED EVENT RECORDING: '%s' (ID: %s)\n", eventName.c_str(), eventId.c_str());
         Serial.printf(" Duration: %.1f sec | Sampling: 10 Hz (100 ms) | Target: Sheet 2\n", durationSec);
@@ -139,19 +120,13 @@ public:
         return true;
     }
 
-    // Called inside 10 Hz loop (every 100 ms)
+    // Called inside 10 Hz loop (every 100 ms) - 100% non-blocking!
     void captureSample(float voltage, float pressureKpa, float dpDt, const char* stateStr,
                        float predLevelPct, float flowRateLps, float cumulativeLiters) {
         if (!recordingActive) return;
 
         unsigned long now = millis();
         float elapsedSec = (now - startMillis) / 1000.0f;
-
-        // Query rooftop node every 500 ms (fast / non-blocking)
-        if (now - lastRooftopFetch >= 500) {
-            lastRooftopFetch = now;
-            fetchRooftopDistance();
-        }
 
         // Append line to SPIFFS: s,v,p,d,st,ud,ul,pl,fl,vl
         if (writeBuffer) {
@@ -169,7 +144,16 @@ public:
     }
 
     bool stopEvent() {
-        if (!recordingActive) return false;
+        if (!recordingActive) {
+            if (uploadingActive) {
+                uploadingActive = false;
+                if (readBuffer) readBuffer.close();
+                SPIFFS.remove(bufferPath);
+                uploadStatusText = "Upload cancelled";
+                return true;
+            }
+            return false;
+        }
 
         recordingActive = false;
         if (writeBuffer) {
@@ -182,6 +166,7 @@ public:
             totalUploadChunks = (samplesCaptured + 49) / 50; // 50 samples per chunk
             currentUploadChunk = 0;
             uploadingActive = true;
+            lastChunkPostTime = millis();
             uploadStatusText = "Preparing chunked upload to Sheet 2 (0/" + String(totalUploadChunks) + ")...";
 
             readBuffer = SPIFFS.open(bufferPath, FILE_READ);

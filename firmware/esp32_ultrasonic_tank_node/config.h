@@ -53,11 +53,12 @@
 #define GMT_OFFSET_SEC          19800   // IST (India Standard Time) UTC+5:30 -> 19800 sec
 #define DAYLIGHT_OFFSET_SEC     0
 // =========================================================================
-// 5. AUTOMATIC CLOUD OVER-THE-AIR (OTA) SELF-UPDATE (EVERY 15 MINUTES)
+// 5. AUTOMATIC CLOUD OVER-THE-AIR (OTA) SELF-UPDATE
 // =========================================================================
-#define FIRMWARE_VERSION            "1.3.1"
-#define AUTO_OTA_ENABLED            true
-#define OTA_CHECK_INTERVAL_MIN      15      // Check for new updates every 15 minutes
+#define FIRMWARE_VERSION            "1.3.2"
+// Disabled by default to prevent spontaneous background reboots during experiments.
+#define AUTO_OTA_ENABLED            false
+#define OTA_CHECK_INTERVAL_MIN      15
 #define OTA_NODE_NAME               "ultrasonic_node"
 #define OTA_BIN_FILENAME            "ultrasonic_node_firmware.bin"
 

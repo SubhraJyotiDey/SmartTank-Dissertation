@@ -457,17 +457,26 @@ void onMqttMessageReceived(char* topic, byte* payload, unsigned int length) {
 void publishMqttTelemetry() {
   if (!mqttClient.connected()) return;
 
-  char payload[160];
+  char payload[256];
   const char* st = (tapState == STATE_TAP_OPEN) ? "TAP_OPEN" :
                    (tapState == STATE_SETTLING) ? "SETTLING" : "STATIC";
 
-  // Compact JSON payload:
+  // Compact JSON payload with full event recorder feedback:
   // p: Pressure (kPa), l: Level (%), v: Voltage (V), d: dP/dt, s: State,
-  // ud: Ultrasound Ground Truth Distance (cm), ul: Level (%), sc: Scenario (1=Dual, 2=Relay, 3=Offline)
+  // ud: Ultrasound Distance, ul: Ultrasound Level, sc: Scenario,
+  // rec: Recording active bool, rec_s: Elapsed recording sec, dur: Target duration sec,
+  // samples: Sample count, up: Uploading active bool, up_pct: Upload progress %
   snprintf(payload, sizeof(payload),
-           "{\"p\":%.2f,\"l\":%.1f,\"v\":%.3f,\"d\":%.2f,\"s\":\"%s\",\"ud\":%.1f,\"ul\":%.1f,\"sc\":%u}",
+           "{\"p\":%.2f,\"l\":%.1f,\"v\":%.3f,\"d\":%.2f,\"s\":\"%s\",\"ud\":%.1f,\"ul\":%.1f,\"sc\":%u,"
+           "\"rec\":%s,\"rec_s\":%.1f,\"dur\":%.1f,\"samples\":%d,\"up\":%s,\"up_pct\":%d}",
            filteredPressure, waterLevelPct, sensorVoltage, dPdt, st,
-           peerRoofDistanceCm, peerRoofLevelPct, activeScenario);
+           peerRoofDistanceCm, peerRoofLevelPct, activeScenario,
+           eventRecorder.isRecording() ? "true" : "false",
+           eventRecorder.getElapsedSec(),
+           eventRecorder.getDurationSec(),
+           eventRecorder.getSamplesCount(),
+           eventRecorder.isUploading() ? "true" : "false",
+           eventRecorder.getUploadProgressPct());
 
   mqttClient.publish(MQTT_TOPIC_TELEMETRY, payload);
 }
@@ -519,14 +528,14 @@ void loop() {
 }
 
 // =========================================================================
-// SENSOR SAMPLING & DIRECT ADC READING (NO DIGITAL FILTERS)
+// SENSOR SAMPLING & RESPONSIVE NOISE REJECTION (STABLE 5 HZ / 10 HZ STREAM)
 // =========================================================================
 void sampleSensors() {
   if (usingExternalAdc) {
     // -----------------------------------------------------------------------
-    // A. 16-BIT PRECISION SAMPLING VIA EXTERNAL ADS1115 I2C ADC (DIRECT HARDWARE)
+    // A. 16-BIT PRECISION SAMPLING VIA EXTERNAL ADS1115 I2C ADC (4-SAMPLE BURST)
     // -----------------------------------------------------------------------
-    float vRead = ads.readVoltage(ADS1115_PRESSURE_CH);
+    float vRead = ads.readVoltageAveraged(ADS1115_PRESSURE_CH, 4);
     if (vRead >= 0.0f) {
       #if ADS1115_DIRECT_5V
         // Direct Mode: Sensor 0.5V - 4.5V output read directly on A0
@@ -539,14 +548,41 @@ void sampleSensors() {
     }
   } else {
     // -----------------------------------------------------------------------
-    // B. FALLBACK: 12-BIT INTERNAL ESP32 ADC (GPIO 34) DIRECT SAMPLING
+    // B. FALLBACK: 12-BIT INTERNAL ESP32 ADC WITH 32-SAMPLE TRIMMED MEAN
+    // Discards top 20% and bottom 20% outlier noise spikes to stop random jumps
     // -----------------------------------------------------------------------
-    rawAdcAvg = (float)analogRead(PIN_PRESSURE_ADC);
+    int samples[ADC_OVERSAMPLE_COUNT];
+    for (int i = 0; i < ADC_OVERSAMPLE_COUNT; i++) {
+      samples[i] = analogRead(PIN_PRESSURE_ADC);
+      delayMicroseconds(40);
+    }
+
+    // Insertion sort to extract median band
+    for (int i = 1; i < ADC_OVERSAMPLE_COUNT; i++) {
+      int key = samples[i];
+      int j = i - 1;
+      while (j >= 0 && samples[j] > key) {
+        samples[j + 1] = samples[j];
+        j--;
+      }
+      samples[j + 1] = key;
+    }
+
+    // Average the middle 60% of samples (discards any high/low outlier spikes)
+    int trimCount = ADC_OVERSAMPLE_COUNT / 5; // 6 samples trimmed on each side
+    long middleSum = 0;
+    int validCount = 0;
+    for (int i = trimCount; i < (ADC_OVERSAMPLE_COUNT - trimCount); i++) {
+      middleSum += samples[i];
+      validCount++;
+    }
+    rawAdcAvg = (float)middleSum / (float)validCount;
+
     float vPin = (rawAdcAvg / ADC_RESOLUTION) * ADC_REF_VOLTAGE;
     sensorVoltage = vPin / VOLTAGE_DIVIDER_RATIO;
   }
 
-  // 5. Convert Sensor Voltage to Gauge Pressure (kPa)
+  // Convert Sensor Voltage to Gauge Pressure (kPa)
   // Standard 0.2 MPa sensor: 0.5V = 0 kPa, 4.5V = 200 kPa
   if (sensorVoltage < SENSOR_MIN_V) {
     currentPressure = 0.0f;
@@ -554,20 +590,35 @@ void sampleSensors() {
     currentPressure = (sensorVoltage - SENSOR_MIN_V) * (SENSOR_MAX_KPA / (SENSOR_MAX_V - SENSOR_MIN_V));
   }
 
-  // Direct Gauge Output directly from ADC (No digital smoothing, EMA, or deadband)
-  filteredPressure = currentPressure;
+  // Adaptive Dynamic Noise Rejection:
+  // Clamps micro-noise jitter (< 0.25 kPa) while instantly tracking tap transients (> 2.0 kPa)
+  if (filteredPressure <= 0.001f) {
+    filteredPressure = currentPressure;
+  } else {
+    float diff = currentPressure - filteredPressure;
+    if (fabs(diff) < 0.25f) {
+      // Clamped micro-noise deadband: gentle slow creep to track real tank drain without jitter
+      filteredPressure += 0.02f * diff;
+    } else if (fabs(diff) > 2.0f) {
+      // Fast physical transient (tap open / close / hammer): snap immediately!
+      filteredPressure = (0.75f * currentPressure) + (0.25f * filteredPressure);
+    } else {
+      // Moderate step: smooth EMA
+      filteredPressure = (PRESSURE_EMA_ALPHA * currentPressure) + ((1.0f - PRESSURE_EMA_ALPHA) * filteredPressure);
+    }
+  }
 }
 
 // =========================================================================
 // ADVANCED DUAL-CONDITION HYDRAULIC FLOW & WATER HAMMER CLASSIFIER
 // =========================================================================
 void updateFlowStateMachine() {
-  // 1. Instantaneous time derivative dP/dt in kPa/s (dt = 100 ms, direct from ADC)
+  // 1. Instantaneous time derivative dP/dt in kPa/s (dt = 100 ms)
   float instantDpH = (filteredPressure - prevPressure) / 0.10f;
   prevPressure = filteredPressure;
 
-  // Direct instantaneous derivative from ADC
-  dPdt = instantDpH;
+  // 2. Smooth derivative to eliminate 1-frame ADC glitches
+  dPdt = (0.35f * instantDpH) + (0.65f * dPdt);
 
   unsigned long now = millis();
 
