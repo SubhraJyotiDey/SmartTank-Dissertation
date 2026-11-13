@@ -1,10 +1,10 @@
 {
-  "firmware_version": "1.2.8",
-  "published_at": "2026-11-09T15:00:00Z",
+  "firmware_version": "1.2.9",
+  "published_at": "2026-11-13T02:45:00Z",
   "pressure_node": {
-    "version": "1.2.8",
+    "version": "1.2.9",
     "filename": "pressure_node_firmware.bin",
-    "description": "Floor 1 Pressure Tap Node with ESP-NOW auto-discovery, sub-10ms Node 2 telemetry receiver, and Core 1 decoupled drain."
+    "description": "Floor 1 Pressure Tap Node v1.2.9 with true 5Hz live telemetry, 10Hz burst event capture, Node 3 load-shedding bypass, and 3000ms MQTT timeout."
   },
   "ultrasonic_node": {
     "version": "1.2.8",

@@ -218,79 +218,13 @@ inline void initEspNowSender() {
 }
 
 bool sendEspNowPumpCommand(uint8_t cmd, float level) {
-  if (!espNowInitialized) {
-    initEspNowCluster();
-    if (!espNowInitialized) return false;
-  }
-
-  unsigned long now = millis();
-
-  // Safety Lockout Check: If Node 3 tripped, reject START command until cooldown expires
-  if (cmd == 1 && pumpSafetyLockout) {
-    if (now < pumpLockoutUntil) {
-      unsigned long secLeft = (pumpLockoutUntil - now) / 1000UL;
-      Serial.printf("[PUMP] Command rejected: Node 3 Safety Lockout active (%s, %lu s remaining)\n",
-                    pumpLockoutReason.c_str(), secLeft);
-      return false;
-    } else {
-      pumpSafetyLockout = false;
-      pumpLockoutReason = "Normal (Cooldown Expired)";
-    }
-  }
-
-  static uint16_t pumpCmdSeq = 1;
-  ClusterPacket pkt;
-  memset(&pkt, 0, sizeof(ClusterPacket));
-  pkt.magic = CLUSTER_MAGIC;
-  pkt.senderId = NODE_ID_TAP_PRESSURE;
-  pkt.msgType = MSG_PUMP_COMMAND;
-  pkt.seqNumber = pumpCmdSeq++;
-  pkt.wifiChannel = (WiFi.status() == WL_CONNECTED) ? WiFi.channel() : 1;
-  pkt.wifiRssi = (WiFi.status() == WL_CONNECTED) ? (int8_t)WiFi.RSSI() : -127;
-  pkt.isGateway = isElectedGateway ? 1 : 0;
-  memcpy(pkt.senderMac, myMac, 6);
-
-  pkt.payload.pump.command = cmd;
-  pkt.payload.pump.tankLevelPct = level;
-  pkt.payload.pump.fillBudgetSec = 2100; // 35 min max budget
-
-  esp_err_t res = esp_now_send(pumpNodeMac, (uint8_t *)&pkt, sizeof(pkt));
-  esp_now_send(broadcastMac, (uint8_t *)&pkt, sizeof(pkt)); // Fallback broadcast ensures delivery
-
-  // Dual-Path LAN Forwarding: Also dispatch directly over local TCP HTTP to Node 3 (192.168.29.175)
-  if (WiFi.status() == WL_CONNECTED) {
-    HTTPClient httpPump;
-    WiFiClient clientPump;
-    if (httpPump.begin(clientPump, "http://192.168.29.175/api/pump?state=" + String(cmd))) {
-      httpPump.setTimeout(1500);
-      int httpCode = httpPump.GET();
-      if (httpCode == 200) {
-        Serial.printf("[PUMP] ✅ Direct HTTP command dispatched to Node 3 (state=%d)\n", cmd);
-      }
-      httpPump.end();
-    }
-  }
-
+  // Node 3 operations currently bypassed for load-shedding during data collection
   pumpActiveTracked = (cmd == 1);
-  lastPumpCmdTime = now;
   return true;
 }
 
 void broadcastClusterHeartbeat() {
-  if (!espNowInitialized) return;
-  static uint16_t hbSeq = 1;
-  ClusterPacket pkt;
-  memset(&pkt, 0, sizeof(ClusterPacket));
-  pkt.magic = CLUSTER_MAGIC;
-  pkt.senderId = NODE_ID_TAP_PRESSURE;
-  pkt.msgType = MSG_CLUSTER_HEARTBEAT;
-  pkt.seqNumber = hbSeq++;
-  pkt.wifiChannel = (WiFi.status() == WL_CONNECTED) ? WiFi.channel() : 1;
-  pkt.wifiRssi = (WiFi.status() == WL_CONNECTED) ? (int8_t)WiFi.RSSI() : -127;
-  pkt.isGateway = isElectedGateway ? 1 : 0;
-  memcpy(pkt.senderMac, myMac, 6);
-
-  esp_now_send(broadcastMac, (uint8_t*)&pkt, sizeof(pkt));
+  // Node 3 cluster heartbeat bypassed for load-shedding during data collection
 }
 
 // =========================================================================
@@ -716,11 +650,12 @@ void onMqttMessageReceived(char* topic, byte* payload, unsigned int length) {
   }
 }
 
-// Publish 5 Hz Real-Time Telemetry to Global MQTT Broker
+// Publish High-Speed Telemetry: 10 Hz (100ms) during Event Capture, 5 Hz (200ms) in Standby
 void publishMqttTelemetry() {
   if (!mqttClient.connected()) return;
   static unsigned long lastMqttPub = 0;
-  if (millis() - lastMqttPub < 200) return; // 5 Hz rate limit (200 ms)
+  unsigned long minInterval = eventRecorder.isRecording() ? 95 : 195; // 10 Hz burst vs 5 Hz standby
+  if (millis() - lastMqttPub < minInterval) return;
   lastMqttPub = millis();
 
   char payload[512];
@@ -797,8 +732,8 @@ void loop() {
 
   // Safely drain queued offline logs on Core 1 after Wi-Fi reconnect and network stabilization
   static unsigned long lastOfflineDrainCheck = 0;
-  if ((pendingOfflineDrain || (getOfflineQueueCount() > 0)) && (WiFi.status() == WL_CONNECTED)) {
-    if ((currentMillis - wifiReconnectTime >= 4000) && (currentMillis - lastOfflineDrainCheck >= 15000)) {
+  if (!eventRecorder.isRecording() && (pendingOfflineDrain || (getOfflineQueueCount() > 0)) && (WiFi.status() == WL_CONNECTED)) {
+    if ((currentMillis - wifiReconnectTime >= 4000) && (currentMillis - lastOfflineDrainCheck >= 30000)) {
       lastOfflineDrainCheck = currentMillis;
       pendingOfflineDrain = false;
       uploadBufferedOfflineLogs();
@@ -1104,6 +1039,7 @@ bool postBulkJsonToGoogleSheets(const String& jsonPayload) {
 }
 
 void uploadBufferedOfflineLogs() {
+  if (eventRecorder.isRecording()) return; // Never block 10 Hz event capture!
   if (WiFi.status() != WL_CONNECTED) return;
   if (!SPIFFS.exists(OFFLINE_QUEUE_FILE)) return;
 
@@ -1290,6 +1226,10 @@ void handleNtpAndLogging() {
 // HTTPS CLIENT FOR GOOGLE APPS SCRIPT (LIVE 1-MIN LOGGING)
 // =========================================================================
 bool sendToGoogleSheets(const String& timestampStr) {
+  if (eventRecorder.isRecording()) {
+    Serial.println(F("[SHEETS] High-res event recording active! Skipping 1-min log to protect 10 Hz sampling."));
+    return false;
+  }
   if (WiFi.status() != WL_CONNECTED) {
     Serial.println(F("[SHEETS] Wi-Fi not connected. Switching to offline Flash queue."));
     return false;
@@ -1419,23 +1359,7 @@ void wifiMaintainerTask(void *pvParameters) {
       maintainWiFi();
     }
 
-    // 2. Broadcast Cluster Heartbeat (feeds Node 3 15-second safety watchdog via ESP-NOW)
-    broadcastClusterHeartbeat();
-
-    // Dual-Path Heartbeat & Status Sync: Feed Node 3 watchdog over local HTTP keepalive
-    if (WiFi.status() == WL_CONNECTED) {
-      HTTPClient httpKeepalive;
-      WiFiClient clientKeepalive;
-      if (httpKeepalive.begin(clientKeepalive, "http://192.168.29.175/api/pump?keepalive=1")) {
-        httpKeepalive.setTimeout(1200);
-        int code = httpKeepalive.GET();
-        if (code == 200) {
-          String resp = httpKeepalive.getString();
-          pumpActiveTracked = (resp.indexOf("\"pump_state\":\"ON\"") >= 0);
-        }
-        httpKeepalive.end();
-      }
-    }
+    // Node 3 operations completely bypassed for load shedding during data collection
 
     // 3. Process Pending Gateway Cloud Forwarding for Offline Peers
     if (pendingProxyChunk.hasData && isElectedGateway && (WiFi.status() == WL_CONNECTED)) {

@@ -106,13 +106,11 @@ void setRelay(bool state, const String& reason) {
 
     if (state) {
         digitalWrite(PIN_RELAY, RELAY_ACTIVE_LEVEL);
-        digitalWrite(PIN_STATUS_LED, HIGH); // Solid ON while pump is ON
         pumpStartTime = now;
         lastHeartbeatTime = now;
         Serial.printf("[PUMP] >>> RELAY ENERGIZED (ON) <<< Reason: %s\n", reason.c_str());
     } else {
         digitalWrite(PIN_RELAY, (RELAY_ACTIVE_LEVEL == LOW) ? HIGH : LOW);
-        digitalWrite(PIN_STATUS_LED, LOW);  // Turn OFF when pump is OFF
         pumpStopTime = now;
         lastShutdownReason = reason;
         unsigned long runtimeSec = (now - pumpStartTime) / 1000;
@@ -122,9 +120,39 @@ void setRelay(bool state, const String& reason) {
     publishMqttPumpStatus(reason);
 }
 
-// Built-in Status LED Routine: Solid ON while pump is running, OFF when pump is OFF
+// Built-in Status LED Active Signaling Routine
 void updateStatusLed() {
-    digitalWrite(PIN_STATUS_LED, pumpActive ? HIGH : LOW);
+    static unsigned long lastToggle = 0;
+    static bool ledState = false;
+    unsigned long now = millis();
+
+    // 1. Pump Active -> Continuous warning signaling cadence (250ms ON / 250ms OFF)
+    if (pumpActive) {
+        if (now - lastToggle >= 250) {
+            lastToggle = now;
+            ledState = !ledState;
+            digitalWrite(PIN_STATUS_LED, ledState ? HIGH : LOW);
+        }
+        return;
+    }
+
+    // 2. Cooldown Active after shutoff -> Fast warning strobe (100ms ON / 100ms OFF)
+    if (now - pumpStopTime < MIN_COOLDOWN_MS && pumpStopTime != 0) {
+        if (now - lastToggle >= 100) {
+            lastToggle = now;
+            ledState = !ledState;
+            digitalWrite(PIN_STATUS_LED, ledState ? HIGH : LOW);
+        }
+        return;
+    }
+
+    // 3. Normal Standby / Healthy -> Calm heartbeat flash (60ms pulse every 3 seconds)
+    unsigned long cycle = now % 3000;
+    if (cycle < 60) {
+        digitalWrite(PIN_STATUS_LED, HIGH);
+    } else {
+        digitalWrite(PIN_STATUS_LED, LOW);
+    }
 }
 
 // =========================================================================
