@@ -25,10 +25,14 @@
 #define ULTRASONIC_SAMPLES      7
 
 // =========================================================================
-// 3. WI-FI & NETWORK SETTINGS
+// 3. WI-FI & NETWORK SETTINGS (PRIMARY & PROXY EXTENDER)
 // =========================================================================
 #define DEFAULT_WIFI_SSID       "JioFiber-Technokind"
 #define DEFAULT_WIFI_PASS       "05032006"
+
+// Proxy / Extender Wi-Fi
+#define PROXY_WIFI_SSID         "JioFiber-Technokind_EXT"
+#define PROXY_WIFI_PASS         "05032006"
 
 // OTA (Over-The-Air) Remote Code Upload Settings
 #define OTA_HOSTNAME            "esp32-tank-ultrasonic"
@@ -51,7 +55,7 @@
 // =========================================================================
 // 5. AUTOMATIC CLOUD OVER-THE-AIR (OTA) SELF-UPDATE (EVERY 15 MINUTES)
 // =========================================================================
-#define FIRMWARE_VERSION            "1.3.0"
+#define FIRMWARE_VERSION            "1.3.1"
 #define AUTO_OTA_ENABLED            true
 #define OTA_CHECK_INTERVAL_MIN      15      // Check for new updates every 15 minutes
 #define OTA_NODE_NAME               "ultrasonic_node"

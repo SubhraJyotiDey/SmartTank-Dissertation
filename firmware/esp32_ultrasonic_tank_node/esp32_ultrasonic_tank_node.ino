@@ -18,6 +18,7 @@
  */
 
 #include <WiFi.h>
+#include <WiFiMulti.h>
 #include <esp_now.h>
 #include <esp_wifi.h>
 #include <HTTPClient.h>
@@ -29,6 +30,9 @@
 #include "config.h"
 #include "cloud_ota_updater.h"
 #include "cluster_protocol.h"
+
+// Wi-Fi Multi Client (Auto-selects strongest signal between Primary & Proxy Extender AP)
+WiFiMulti wifiMulti;
 
 // WebServer for local high-speed telemetry query by Pressure Node
 WebServer server(80);
@@ -549,24 +553,29 @@ bool sendToGoogleSheets(const String& timestampStr) {
 }
 
 // =========================================================================
-// ROBUST AUTO-RECONNECTING WI-FI MANAGER
+// ROBUST AUTO-RECONNECTING WI-FI MANAGER (PRIMARY & PROXY EXTENDER)
 // =========================================================================
 void initWiFi() {
-  Serial.printf("[WIFI] Initializing Station connection to: %s\n", DEFAULT_WIFI_SSID);
+  Serial.printf("[WIFI] Initializing Station connection (Primary: %s | Proxy: %s)...\n",
+                DEFAULT_WIFI_SSID, PROXY_WIFI_SSID);
   WiFi.mode(WIFI_STA);
-  WiFi.setAutoReconnect(true); // Low-level SDK auto-reconnect
-  WiFi.begin(DEFAULT_WIFI_SSID, DEFAULT_WIFI_PASS);
+  WiFi.setAutoReconnect(true);
+
+  // Register both Primary Router and Proxy Extender with WiFiMulti
+  wifiMulti.addAP(DEFAULT_WIFI_SSID, DEFAULT_WIFI_PASS);
+  wifiMulti.addAP(PROXY_WIFI_SSID, PROXY_WIFI_PASS);
 
   int attempts = 0;
-  while (WiFi.status() != WL_CONNECTED && attempts < 20) {
+  while (wifiMulti.run(4000) != WL_CONNECTED && attempts < 15) {
     delay(500);
     Serial.print(".");
     attempts++;
   }
 
   if (WiFi.status() == WL_CONNECTED) {
-    Serial.printf("\n[WIFI] Connected! IP Address: %s | RSSI: %d dBm\n",
-                  WiFi.localIP().toString().c_str(), WiFi.RSSI());
+    lastKnownChannel = WiFi.channel();
+    Serial.printf("\n[WIFI] Connected to '%s'! IP: %s | RSSI: %d dBm | Channel: %d\n",
+                  WiFi.SSID().c_str(), WiFi.localIP().toString().c_str(), WiFi.RSSI(), lastKnownChannel);
   } else {
     Serial.println(F("\n[WIFI] Initial connect timed out. Continuous background maintainWiFi() active."));
   }
@@ -586,8 +595,8 @@ void maintainWiFi() {
     if (!wasConnected) {
       wasConnected = true;
       disconnectStart = 0;
-      Serial.printf("\n[WIFI] Wi-Fi Restored! IP: %s | RSSI: %d dBm | Channel: %d\n",
-                    WiFi.localIP().toString().c_str(), WiFi.RSSI(), lastKnownChannel);
+      Serial.printf("\n[WIFI] Wi-Fi Restored on '%s'! IP: %s | RSSI: %d dBm | Channel: %d\n",
+                    WiFi.SSID().c_str(), WiFi.localIP().toString().c_str(), WiFi.RSSI(), lastKnownChannel);
       configTime(GMT_OFFSET_SEC, DAYLIGHT_OFFSET_SEC, NTP_SERVER); // Resync NTP
       uploadBufferedOfflineLogs(); // Immediately drain offline backlog!
     }
@@ -607,21 +616,11 @@ void maintainWiFi() {
   }
 
   unsigned long offlineSec = (disconnectStart > 0) ? ((now - disconnectStart) / 1000) : 0;
-  Serial.printf("[WIFI] Auto-reconnecting to '%s' (Offline: %lu s | Queued: %d records)...\n",
-                DEFAULT_WIFI_SSID, offlineSec, getOfflineQueueCount());
+  Serial.printf("[WIFI] Auto-reconnecting to best AP ('%s' or '%s') (Offline: %lu s | Queued: %d records)...\n",
+                DEFAULT_WIFI_SSID, PROXY_WIFI_SSID, offlineSec, getOfflineQueueCount());
 
-  // If disconnected for > 3 minutes, perform a full hardware radio re-init
-  if (offlineSec > 180) {
-    Serial.println(F("[WIFI] Performing clean Wi-Fi radio reset..."));
-    WiFi.disconnect(true);
-    delay(100);
-    WiFi.mode(WIFI_STA);
-    WiFi.setAutoReconnect(true);
-    WiFi.begin(DEFAULT_WIFI_SSID, DEFAULT_WIFI_PASS);
-    disconnectStart = now;
-  } else {
-    WiFi.reconnect();
-  }
+  // Use WiFiMulti to auto-select and connect to whichever AP is currently in range / strongest
+  wifiMulti.run(3000);
 }
 
 void initOTA() {

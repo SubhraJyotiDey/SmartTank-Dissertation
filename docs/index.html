@@ -808,7 +808,7 @@
         </div>
         <!-- Cloud OTA Version Badge (Click to Update Immediately) -->
         <div id="otaBadge" class="badge" onclick="sendUpdateFirmwareNow(0)" style="background: rgba(168,85,247,0.15); border-color: rgba(168,85,247,0.3); color: #c084fc; cursor: pointer;" title="Click to update firmware immediately on both nodes via Cloud OTA">
-          OTA: <span id="otaVersionText" style="margin-left:4px;">v1.3.0</span> ⚡
+          OTA: <span id="otaVersionText" style="margin-left:4px;">v1.3.1</span> ⚡
         </div>
         <!-- Local IP Link Pill (if user is on home network) -->
         <a id="localLink" href="http://192.168.29.125/" target="_blank" class="badge btn-secondary" style="color:var(--text-muted); text-decoration:none;" title="Open local node if on same home Wi-Fi">
@@ -968,14 +968,14 @@
 
         <!-- Scenario 2 Card -->
         <div id="scCard2" class="scenario-card">
-          <span class="scenario-pill" style="background: rgba(245,158,11,0.2); color: #fbbf24;">Scenario 2: Gateway Relay Mode</span>
-          <h4 style="font-size: 0.95rem; margin-bottom: 0.4rem; color: #f8fafc;">Rooftop Wi-Fi Deadzone Proxy</h4>
+          <span class="scenario-pill" style="background: rgba(245,158,11,0.2); color: #fbbf24;">Scenario 2: Gateway Relay &amp; Proxy Wi-Fi</span>
+          <h4 style="font-size: 0.95rem; margin-bottom: 0.4rem; color: #f8fafc;">Rooftop Wi-Fi Deadzone Proxy &amp; Extender</h4>
           <p style="font-size: 0.78rem; color: var(--text-muted); line-height: 1.5; margin-bottom: 0.75rem;">
-            Overhead tank Node 2 loses Wi-Fi signal. Node 2 broadcasts 1-minute ground truth packets over ESP-NOW. Node 1 acts as <strong>Internet Gateway</strong>, relaying Node 2's data to Google Sheets on its behalf.
+            Both nodes auto-roam between <strong>Primary AP</strong> (<code>JioFiber-Technokind</code>) and <strong>Proxy Extender AP</strong> (<code>JioFiber-Technokind_EXT</code>). If Node 2 loses Wi-Fi completely, Node 1 acts as <strong>Internet Gateway</strong>, proxying ground truth to Google Sheets over ESP-NOW.
           </p>
           <div style="font-family:'JetBrains Mono'; font-size: 0.72rem; color: #94a3b8; background: rgba(0,0,0,0.3); padding: 6px 10px; border-radius: 6px;">
-            <div>• Wi-Fi STA: <span style="color:#eab308;">Node 1 Online | Node 2 Offline</span></div>
-            <div>• Gateway Proxy: <span style="color:#38bdf8;">Node 1 Relays Node 2 to Cloud</span></div>
+            <div>• Proxy Wi-Fi: <span style="color:#38bdf8;">JioFiber-Technokind_EXT (Active)</span></div>
+            <div>• Gateway Proxy: <span style="color:#eab308;">Node 1 Relays Node 2 if Wi-Fi Lost</span></div>
             <div>• Data Loss: <span style="color:#10b981;">0% (Full Zero-Loss Forwarding)</span></div>
           </div>
         </div>
@@ -1297,12 +1297,12 @@
 
         <div class="metrics-row" style="margin-bottom: 1.25rem;">
           <div class="metric-card">
-            <div class="metric-label">Calibrated EMPTY (0%)</div>
-            <div class="metric-val"><span id="valPEmpty">--</span><span class="metric-unit">kPa</span></div>
+            <div class="metric-label">Calibrated EMPTY (Floor 1)</div>
+            <div class="metric-val"><span id="valPEmpty">61.4</span><span class="metric-unit">kPa</span></div>
           </div>
           <div class="metric-card">
-            <div class="metric-label">Calibrated FULL (100%)</div>
-            <div class="metric-val"><span id="valPFull">--</span><span class="metric-unit">kPa</span></div>
+            <div class="metric-label">Calibrated FULL (Floor 1)</div>
+            <div class="metric-val"><span id="valPFull">73.4</span><span class="metric-unit">kPa</span></div>
           </div>
         </div>
 
@@ -1321,15 +1321,18 @@
 
         <div style="display: flex; gap: 1rem; flex-wrap: wrap;">
           <div class="form-group" style="flex: 1; min-width: 130px;">
-            <label>Manual Empty kPa</label>
-            <input type="number" step="0.1" id="inputEmptyKpa" placeholder="2.1">
+            <label>Manual Empty kPa (Floor 1)</label>
+            <input type="number" step="0.1" id="inputEmptyKpa" value="61.4" placeholder="61.4">
           </div>
           <div class="form-group" style="flex: 1; min-width: 130px;">
-            <label>Manual Full kPa</label>
-            <input type="number" step="0.1" id="inputFullKpa" placeholder="55.2">
+            <label>Manual Full kPa (Floor 1)</label>
+            <input type="number" step="0.1" id="inputFullKpa" value="73.4" placeholder="73.4">
           </div>
         </div>
-        <button class="btn btn-secondary" style="width: 100%;" onclick="sendManualCalCmd()">Save Custom Calibration</button>
+        <div style="display: flex; gap: 0.6rem; margin-top: 0.5rem; flex-wrap: wrap;">
+          <button class="btn btn-secondary" style="flex: 1;" onclick="sendManualCalCmd()">Save Calibration</button>
+          <button class="btn btn-primary" style="flex: 1;" onclick="applyFloor1Calibration()">🏢 Calibrate for Floor 1 (61.4 / 73.4 kPa)</button>
+        </div>
       </div>
 
       <!-- Cloud Actions, Google Sheets & Remote Hardware Controls -->
@@ -1953,6 +1956,26 @@
       showToast('Sent manual calibration update');
     }
 
+    function applyFloor1Calibration() {
+      document.getElementById('inputEmptyKpa').value = '61.4';
+      document.getElementById('inputFullKpa').value = '73.4';
+      document.getElementById('inputTankCap').value = '1000';
+      document.getElementById('inputTankDepth').value = '122';
+      const elEmp = document.getElementById('valPEmpty');
+      if (elEmp) elEmp.innerText = '61.4';
+      const elFul = document.getElementById('valPFull');
+      if (elFul) elFul.innerText = '73.4';
+      publishCommand({ cmd: 'manual_cal', p_empty: 61.4, p_full: 73.4 });
+      try {
+        fetch('http://192.168.29.125/api/calibrate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: 'p_empty=61.4&p_full=73.4'
+        });
+      } catch (e) {}
+      showToast('Applied Floor 1 Calibration (61.4 / 73.4 kPa)');
+    }
+
     function sendSaveSettingsCmd() {
       const depth = parseFloat(document.getElementById('inputTankDepth').value);
       const cap = parseFloat(document.getElementById('inputTankCap').value);
@@ -2092,9 +2115,9 @@
             adc: Math.round(((item.voltage !== undefined && item.voltage !== null) ? item.voltage : 0) * (26666 / 5.0)),
             u_l: (item.ultrasonic_level !== undefined && item.ultrasonic_level !== null) ? item.ultrasonic_level : -1,
             u_d: (item.ultrasonic_dist !== undefined && item.ultrasonic_dist !== null) ? item.ultrasonic_dist : -1,
-            p_emp: item.p_empty !== undefined ? item.p_empty : parseFloat(document.getElementById('inputEmptyKpa')?.value || 0),
-            p_ful: item.p_full !== undefined ? item.p_full : parseFloat(document.getElementById('inputFullKpa')?.value || 0),
-            ver: '1.3.0'
+            p_emp: item.p_empty !== undefined ? item.p_empty : (parseFloat(document.getElementById('inputEmptyKpa')?.value) || 61.4),
+            p_ful: item.p_full !== undefined ? item.p_full : (parseFloat(document.getElementById('inputFullKpa')?.value) || 73.4),
+            ver: '1.3.1'
           };
 
           handleLiveTelemetry(telemetryObj);
