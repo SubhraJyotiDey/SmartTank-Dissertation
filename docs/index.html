@@ -1129,8 +1129,8 @@
       </div>
     </div>
 
-    <!-- Node 3 High-Power Pump Relay Controller (PIN Guarded) -->
-    <div class="card pump-card" id="pumpControlCard">
+    <!-- Node 3 High-Power Pump Relay Controller (Deactivated / Load-Shedded for Telemetry Data Collection) -->
+    <div class="card pump-card" id="pumpControlCard" style="display: none !important;">
       <div class="card-title">
         <div style="display: flex; align-items: center; gap: 0.65rem;">
           <div class="pump-icon-halo">
@@ -1442,9 +1442,9 @@
     let lastMsgTime = 0;
 
     // High-Precision Digital Oscilloscope Parameters
-    const OSCILLOSCOPE_POINTS = 60; // 60-sample continuous sweep buffer
+    const OSCILLOSCOPE_POINTS = 100; // 100-sample high-fidelity buffer (20s at 5 Hz, 10s at 10 Hz)
+    let lastOscilloscopeUpdate = Date.now();
     let targetPressure = 69.5;
-    let currentRenderPressure = 69.5;
 
     // Initialize Chart.js with hardware-accelerated linear phosphor oscilloscope trace
     function initChart() {
@@ -1495,18 +1495,17 @@
         }
       });
 
-      // Continuous 10 Hz Oscilloscope Phosphor Sweep Engine (100ms interval)
+      // Sweep Keepalive Engine: sweeps flatline baseline only when hardware stream pauses > 350ms
       setInterval(() => {
-        // Smooth interpolation toward target pressure
-        currentRenderPressure += (targetPressure - currentRenderPressure) * 0.35;
-        pressureData.push(parseFloat(currentRenderPressure.toFixed(2)));
-        if (pressureData.length > OSCILLOSCOPE_POINTS) {
-          pressureData.shift();
-        }
-        if (chart) {
+        if (Date.now() - lastOscilloscopeUpdate > 350 && chart && pressureData.length > 0) {
+          const lastVal = pressureData[pressureData.length - 1];
+          pressureData.push(lastVal);
+          if (pressureData.length > OSCILLOSCOPE_POINTS) {
+            pressureData.shift();
+          }
           chart.update('none'); // Instant canvas render without layout recalculation
         }
-      }, 100);
+      }, 200);
     }
 
     // Active Data Source Tracking
@@ -1796,13 +1795,44 @@
       // Event Recorder Monitor
       updateEventMonitor(d);
 
-      // Update target pressure for continuous 10 Hz oscilloscope sweep
+      // Dynamic Stream Frequency Badge (5 Hz normal vs 10 Hz high-speed burst)
+      const pingEl = document.getElementById('pingBadge');
+      if (pingEl) {
+        if (d.rec) {
+          pingEl.innerText = '🔴 10 Hz EVENT BURST';
+          pingEl.style.color = '#ef4444';
+          pingEl.style.background = 'rgba(239, 68, 68, 0.15)';
+          pingEl.style.padding = '2px 8px';
+          pingEl.style.borderRadius = '4px';
+          pingEl.style.border = '1px solid #ef4444';
+          pingEl.style.fontWeight = '700';
+        } else {
+          pingEl.innerText = '🟢 LIVE 5 Hz STREAM';
+          pingEl.style.color = '#10b981';
+          pingEl.style.background = 'rgba(16, 185, 129, 0.15)';
+          pingEl.style.padding = '2px 8px';
+          pingEl.style.borderRadius = '4px';
+          pingEl.style.border = '1px solid #10b981';
+          pingEl.style.fontWeight = '700';
+        }
+      }
+
+      // Direct Hardware Stream Oscilloscope Rendering (True 5 Hz stream / 10 Hz burst, zero synthetic lag)
       if (d.p !== undefined && !isNaN(d.p)) {
+        lastOscilloscopeUpdate = Date.now();
         targetPressure = d.p;
-        // Auto-scale Y-axis if reading shifts near boundaries
-        if (chart && (d.p > chart.options.scales.y.suggestedMax - 3 || d.p < chart.options.scales.y.suggestedMin + 3)) {
-          chart.options.scales.y.suggestedMin = Math.max(0, Math.floor(d.p - 15));
-          chart.options.scales.y.suggestedMax = Math.ceil(d.p + 15);
+        const pVal = parseFloat(d.p.toFixed(2));
+        pressureData.push(pVal);
+        if (pressureData.length > OSCILLOSCOPE_POINTS) {
+          pressureData.shift();
+        }
+        if (chart) {
+          // Dynamic Y-axis auto-scaling with padding
+          if (pVal > chart.options.scales.y.suggestedMax - 2 || pVal < chart.options.scales.y.suggestedMin + 2) {
+            chart.options.scales.y.suggestedMin = Math.max(0, Math.floor(pVal - 15));
+            chart.options.scales.y.suggestedMax = Math.ceil(pVal + 15);
+          }
+          chart.update('none'); // Direct phosphor trace update
         }
       }
     }
