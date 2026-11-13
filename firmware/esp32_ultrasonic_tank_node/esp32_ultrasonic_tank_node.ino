@@ -18,50 +18,33 @@
  */
 
 #include <WiFi.h>
-#include <esp_now.h>
-#include <esp_wifi.h>
 #include <HTTPClient.h>
 #include <WiFiClientSecure.h>
 #include <SPIFFS.h>
-#include <Preferences.h>
 #include <time.h>
 #include <ArduinoOTA.h>
 #include <WebServer.h>
 #include "config.h"
 #include "cloud_ota_updater.h"
-#include "cluster_protocol.h"
 
 // WebServer for local high-speed telemetry query by Pressure Node
 WebServer server(80);
-
-// NVS Persistent Storage
-Preferences preferences;
 
 // Automatic Cloud OTA Self-Updater (every 15 minutes)
 CloudOTAUpdater cloudOTA(FIRMWARE_VERSION, OTA_BIN_FILENAME, DEFAULT_GITHUB_OTA_TOKEN);
 
 // =========================================================================
-// GLOBAL VARIABLES & ESP-NOW
+// GLOBAL VARIABLES
 // =========================================================================
-float tankDepthCm        = DEFAULT_TANK_DEPTH_CM;
-float sensorOffsetCm     = DEFAULT_SENSOR_OFFSET_CM; // Air gap distance at 100% full (Tank Full Scenario)
+float tankDepthCm      = DEFAULT_TANK_DEPTH_CM;
+float sensorOffsetCm    = DEFAULT_SENSOR_OFFSET_CM;
 
 float measuredDistanceCm = 0.0f;
-float smoothedDistanceCm = -1.0f;   // Exponential Moving Average filtered distance
-float lastValidCandidate = -1.0f;   // Candidate for large jump validation
-int   consecutiveMisses  = 0;       // Counter for persistent echo timeout detection
 float waterHeightCm      = 0.0f;
 float waterLevelPct      = 0.0f;
 
 unsigned long lastSampleTime    = 0;
 unsigned long lastLogSlotMinute = 999;
-
-// ESP-NOW Mesh Protocol State
-uint8_t broadcastMac[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
-uint8_t myMac[6]        = {0};
-uint16_t roofSeq        = 1;
-bool espNowReady        = false;
-uint8_t lastKnownChannel = 1;
 
 // Persistent Offline Queue in Flash SPIFFS
 const char* OFFLINE_QUEUE_FILE = "/offline_ultrasonic.csv";
@@ -69,8 +52,6 @@ const char* OFFLINE_QUEUE_FILE = "/offline_ultrasonic.csv";
 // =========================================================================
 // FUNCTION DECLARATIONS
 // =========================================================================
-void loadSettings();
-void saveSettings();
 void initWiFi();
 void maintainWiFi();
 void initOTA();
@@ -87,30 +68,6 @@ bool postBulkJsonToGoogleSheets(const String& jsonPayload);
 int getOfflineQueueCount();
 
 // =========================================================================
-// SETTINGS PERSISTENCE (NVS)
-// =========================================================================
-void loadSettings() {
-  preferences.begin("smart_tank_us", true); // Read-only
-  sensorOffsetCm = preferences.getFloat("sensor_offset", DEFAULT_SENSOR_OFFSET_CM);
-  if (sensorOffsetCm >= 10.5f && sensorOffsetCm <= 11.5f) {
-    sensorOffsetCm = DEFAULT_SENSOR_OFFSET_CM; // Update legacy 11cm default to 6cm
-  }
-  tankDepthCm    = preferences.getFloat("tank_depth", DEFAULT_TANK_DEPTH_CM);
-  preferences.end();
-  Serial.printf("[NVS] Loaded settings: Tank Full Dist (Offset) = %.1f cm | Tank Depth = %.1f cm\n",
-                sensorOffsetCm, tankDepthCm);
-}
-
-void saveSettings() {
-  preferences.begin("smart_tank_us", false); // Read-write
-  preferences.putFloat("sensor_offset", sensorOffsetCm);
-  preferences.putFloat("tank_depth", tankDepthCm);
-  preferences.end();
-  Serial.printf("[NVS] Settings saved: Tank Full Dist (Offset) = %.1f cm | Tank Depth = %.1f cm\n",
-                sensorOffsetCm, tankDepthCm);
-}
-
-// =========================================================================
 // SETUP
 // =========================================================================
 void setup() {
@@ -119,9 +76,6 @@ void setup() {
   Serial.println(F("\n==========================================================="));
   Serial.println(F(" Smart Tank: Ultrasonic Ground Truth Node (ESP32 #2)"));
   Serial.println(F("==========================================================="));
-
-  // Load persistent calibration and geometry parameters from Flash NVS
-  loadSettings();
 
   pinMode(PIN_TRIG, OUTPUT);
   pinMode(PIN_ECHO, INPUT);
@@ -140,21 +94,6 @@ void setup() {
   initOTA();
   initNTP();
 
-  // ESP-NOW Mesh Protocol Init
-  WiFi.macAddress(myMac);
-  if (WiFi.status() == WL_CONNECTED) lastKnownChannel = WiFi.channel();
-  if (esp_now_init() == ESP_OK) {
-    espNowReady = true;
-    esp_now_peer_info_t bcast = {};
-    memcpy(bcast.peer_addr, broadcastMac, 6);
-    bcast.channel = (WiFi.status() == WL_CONNECTED) ? WiFi.channel() : lastKnownChannel;
-    bcast.encrypt = false;
-    esp_now_add_peer(&bcast);
-    Serial.printf("[ESP-NOW] Ultrasonic Node initialized on Channel %d. Broadcast peer added.\n", bcast.channel);
-  } else {
-    Serial.println(F("[ESP-NOW] Failed to initialize ESP-NOW on Node 2!"));
-  }
-
   // Local API for Node 1 to fetch live ultrasonic ground truth during high-res events
   server.on("/api/reading", HTTP_GET, []() {
     String json = "{";
@@ -162,52 +101,10 @@ void setup() {
     json += "\"water_height_cm\":" + String(waterHeightCm, 1) + ",";
     json += "\"level_pct\":" + String(waterLevelPct, 1) + ",";
     json += "\"offset_cm\":" + String(sensorOffsetCm, 1) + ",";
-    json += "\"us_full_dist\":" + String(sensorOffsetCm, 1) + ",";
     json += "\"depth_cm\":" + String(tankDepthCm, 1);
     json += "}";
     server.send(200, "application/json", json);
   });
-
-  // Settings configuration endpoint (allows setting tank full distance / offset and tank depth)
-  server.on("/api/settings", HTTP_ANY, []() {
-    bool changed = false;
-    if (server.hasArg("offset_cm")) {
-      sensorOffsetCm = server.arg("offset_cm").toFloat();
-      changed = true;
-    } else if (server.hasArg("us_full_dist")) {
-      sensorOffsetCm = server.arg("us_full_dist").toFloat();
-      changed = true;
-    }
-    if (server.hasArg("depth_cm")) {
-      tankDepthCm = server.arg("depth_cm").toFloat();
-      changed = true;
-    }
-    if (changed) {
-      saveSettings();
-      calculateGroundTruth();
-    }
-    String json = "{\"status\":\"ok\",\"offset_cm\":" + String(sensorOffsetCm, 1) +
-                  ",\"us_full_dist\":" + String(sensorOffsetCm, 1) +
-                  ",\"depth_cm\":" + String(tankDepthCm, 1) + "}";
-    server.send(200, "application/json", json);
-  });
-
-  // Remote reboot endpoint
-  server.on("/api/reboot", HTTP_ANY, []() {
-    server.send(200, "application/json", "{\"status\":\"ok\",\"message\":\"Rebooting Node 2...\"}");
-    delay(500);
-    ESP.restart();
-  });
-
-  // Remote Immediate Cloud OTA Update endpoint
-  server.on("/api/ota_update", HTTP_ANY, []() {
-    Serial.println(F("[HTTP] ⚡ Immediate Cloud OTA Update triggered on Node 2 via Web/API"));
-    server.send(200, "application/json", "{\"status\":\"ok\",\"message\":\"Starting Immediate Cloud OTA on Node 2...\"}");
-    delay(250);
-    cloudOTA.checkAndUpdate(true); // Force download & flash from GitHub
-  });
-
-  server.enableCORS(true);
   server.begin();
   Serial.println(F("[HTTP] Local telemetry API started on port 80"));
 
@@ -242,29 +139,21 @@ void loop() {
 }
 
 // =========================================================================
-// ULTRASONIC MEASUREMENT WITH MULTI-SAMPLE MEDIAN & TEMPORAL EMA FILTER
+// ULTRASONIC MEASUREMENT WITH MULTI-SAMPLE MEDIAN FILTER
 // =========================================================================
 float measureDistanceSingle() {
-  // 1. Wait up to 1000 us for ECHO line to be LOW if it was still active/ringing
-  unsigned long tWait = micros();
-  while (digitalRead(PIN_ECHO) == HIGH && (micros() - tWait) < 1000) {
-    delayMicroseconds(10);
-  }
-
-  // 2. Ensure TRIG line is clean and LOW
+  // Send 10 microsecond pulse to TRIG pin
   digitalWrite(PIN_TRIG, LOW);
-  delayMicroseconds(4);
-
-  // 3. Send 20 microsecond pulse to TRIG pin (required for full transducer chirp energy on JSN-SR04T / AJ-SR04M)
+  delayMicroseconds(2);
   digitalWrite(PIN_TRIG, HIGH);
-  delayMicroseconds(20);
+  delayMicroseconds(10);
   digitalWrite(PIN_TRIG, LOW);
 
-  // 4. Measure ECHO pulse duration in microseconds (25 ms timeout ~ 4.3 meters max)
-  long duration = pulseIn(PIN_ECHO, HIGH, 25000);
+  // Measure ECHO pulse duration in microseconds (timeout 30 ms ~ 5 meters max)
+  long duration = pulseIn(PIN_ECHO, HIGH, 30000);
 
-  if (duration <= 0) {
-    return -1.0f; // Timeout or missed echo
+  if (duration == 0) {
+    return -1.0f; // Timeout or sensor reading failed
   }
 
   // Speed of sound in air ~= 343 m/s = 0.0343 cm/us
@@ -274,32 +163,22 @@ float measureDistanceSingle() {
 }
 
 float measureDistanceMedian() {
-  const int SAMPLES = 9;
-  float readings[SAMPLES];
+  float readings[ULTRASONIC_SAMPLES];
   int validCount = 0;
 
-  for (int i = 0; i < SAMPLES; i++) {
+  for (int i = 0; i < ULTRASONIC_SAMPLES; i++) {
     float d = measureDistanceSingle();
-    // Valid physical range check (exclude near-field blind-zone ringing < 8cm and out-of-tank > 350cm)
-    if (d >= 8.0f && d <= 350.0f) {
+    if (d > 2.0f && d < 450.0f) { // Valid range check
       readings[validCount++] = d;
     }
-    // 50 ms delay between pings: allows acoustic reverberations in tank to decay
-    // Also service HTTP client so local queries from Node 1 never block or time out
-    unsigned long dStart = millis();
-    while (millis() - dStart < 50) {
-      server.handleClient();
-      delay(2);
-    }
+    delay(30);
   }
 
-  // Quorum requirement: Require at least 3 valid readings out of 9
-  // (Prevents a single random noise spike from being accepted when echoes are weak)
-  if (validCount < 3) {
+  if (validCount == 0) {
     return -1.0f;
   }
 
-  // Sort array (Bubble sort)
+  // Sort array (Bubble sort for small array)
   for (int i = 0; i < validCount - 1; i++) {
     for (int j = 0; j < validCount - i - 1; j++) {
       if (readings[j] > readings[j + 1]) {
@@ -310,42 +189,14 @@ float measureDistanceMedian() {
     }
   }
 
-  // Trimmed median: return the true center reading of the sorted cluster
+  // Return median value to reject outlier ripples/splashes
   return readings[validCount / 2];
 }
 
 void calculateGroundTruth() {
-  float rawDist = measureDistanceMedian();
-
-  if (rawDist > 0.0f) {
-    consecutiveMisses = 0;
-
-    // Outlier jump protection:
-    // Water level cannot physically move > 15 cm in 2 seconds.
-    // If a sudden jump occurs, require 2 consecutive cycles to confirm before accepting
-    if (smoothedDistanceCm > 0.0f && fabs(rawDist - smoothedDistanceCm) > 15.0f) {
-      if (lastValidCandidate > 0.0f && fabs(rawDist - lastValidCandidate) < 5.0f) {
-        // Confirmed second reading: accept new level step (e.g. rapid tank filling)
-        smoothedDistanceCm = rawDist;
-        lastValidCandidate = -1.0f;
-      } else {
-        // Suspected ripple / transient reflection: hold candidate for next cycle
-        lastValidCandidate = rawDist;
-        rawDist = smoothedDistanceCm; // Suppress spike for this cycle
-      }
-    } else {
-      lastValidCandidate = -1.0f;
-    }
-
-    // Exponential Moving Average (EMA) Temporal Smoothing (alpha = 0.30):
-    // Drastically suppresses acoustic jitter and surface ripple fluctuations
-    if (smoothedDistanceCm <= 0.0f) {
-      smoothedDistanceCm = rawDist;
-    } else {
-      smoothedDistanceCm = (0.30f * rawDist) + (0.70f * smoothedDistanceCm);
-    }
-
-    measuredDistanceCm = smoothedDistanceCm;
+  float dist = measureDistanceMedian();
+  if (dist > 0.0f) {
+    measuredDistanceCm = dist;
 
     // Water level height calculation:
     // When tank is 100% full, distance to water = sensorOffsetCm
@@ -356,47 +207,10 @@ void calculateGroundTruth() {
     // Percentage
     waterLevelPct = (waterHeightCm / tankDepthCm) * 100.0f;
 
-    Serial.printf("[ULTRASONIC] Raw: %.1f cm | Smooth Dist: %.1f cm | Height: %.1f cm | Level: %.1f%%\n",
-                  rawDist, measuredDistanceCm, waterHeightCm, waterLevelPct);
-
-    // Fast Broadcast via ESP-NOW to Node 1 (Pressure Node) & Node 3 (Pump Relay)
-    if (espNowReady) {
-      ClusterPacket pkt;
-      memset(&pkt, 0, sizeof(ClusterPacket));
-      pkt.magic = CLUSTER_MAGIC;
-      pkt.senderId = NODE_ID_ROOF_ULTRASONIC;
-      pkt.msgType = MSG_ROOF_TELEMETRY;
-      pkt.seqNumber = roofSeq++;
-      pkt.wifiChannel = (WiFi.status() == WL_CONNECTED) ? WiFi.channel() : lastKnownChannel;
-      pkt.wifiRssi = (WiFi.status() == WL_CONNECTED) ? (int8_t)WiFi.RSSI() : -127;
-      memcpy(pkt.senderMac, myMac, 6);
-      pkt.payload.roofTelemetry.distanceCm = smoothedDistanceCm;
-      pkt.payload.roofTelemetry.waterLevelPct = waterLevelPct;
-      pkt.payload.roofTelemetry.waterHeightCm = waterHeightCm;
-      esp_now_send(broadcastMac, (uint8_t*)&pkt, sizeof(pkt));
-
-      // Direct Fail-Safe Overflow Cutoff: If tank level >= 98% or distance <= 8cm, kill pump immediately!
-      if (waterLevelPct >= 98.0f || (smoothedDistanceCm > 0.0f && smoothedDistanceCm <= 8.0f)) {
-        ClusterPacket stopPkt;
-        memset(&stopPkt, 0, sizeof(ClusterPacket));
-        stopPkt.magic = CLUSTER_MAGIC;
-        stopPkt.senderId = NODE_ID_ROOF_ULTRASONIC;
-        stopPkt.msgType = MSG_ROOF_OVERFLOW_STOP;
-        stopPkt.seqNumber = roofSeq++;
-        memcpy(stopPkt.senderMac, myMac, 6);
-        esp_now_send(broadcastMac, (uint8_t*)&stopPkt, sizeof(stopPkt));
-        Serial.println(F("[SAFETY] 🚨 Emergency Overflow Cutoff Sent via ESP-NOW to Pump!"));
-      }
-    }
+    Serial.printf("[ULTRASONIC] Dist: %.1f cm | Height: %.1f cm | Ground Truth Level: %.1f%%\n",
+                  measuredDistanceCm, waterHeightCm, waterLevelPct);
   } else {
-    consecutiveMisses++;
-    Serial.printf("[ULTRASONIC] Sensor read timeout/echo missed! (Consecutive misses: %d)\n", consecutiveMisses);
-
-    // If echo is lost for > 6 consecutive cycles (12 seconds), flag as offline / out of range
-    // rather than staying silently frozen on a stale value
-    if (consecutiveMisses >= 6) {
-      waterLevelPct = -1.0f;
-    }
+    Serial.println(F("[ULTRASONIC] Sensor read timeout/echo missed!"));
   }
 }
 
@@ -459,7 +273,7 @@ bool postBulkJsonToGoogleSheets(const String& jsonPayload) {
 
   HTTPClient http;
   http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
-  http.setTimeout(35000); // 35s timeout for batch bulk ingestion
+  http.setTimeout(25000); // 25s timeout for batch
 
   bool success = false;
   if (http.begin(client, GOOGLE_SCRIPT_URL)) {
@@ -485,34 +299,19 @@ void uploadBufferedOfflineLogs() {
   if (!SPIFFS.exists(OFFLINE_QUEUE_FILE)) return;
 
   File f = SPIFFS.open(OFFLINE_QUEUE_FILE, FILE_READ);
-  if (!f) return;
-  if (f.size() == 0) {
-    f.close();
+  if (!f || f.size() == 0) {
+    if (f) f.close();
     SPIFFS.remove(OFFLINE_QUEUE_FILE);
     return;
   }
 
-  // Count total records in the queue file
-  int totalLines = 0;
-  while (f.available()) {
-    if (f.read() == '\n') totalLines++;
-  }
-  f.seek(0); // Rewind to start of file
+  Serial.printf("\n[OFFLINE] Stored offline logs found (%u bytes). Starting bulk upload to Google Sheets...\n", (unsigned int)f.size());
 
-  if (totalLines == 0) {
-    f.close();
-    SPIFFS.remove(OFFLINE_QUEUE_FILE);
-    return;
-  }
+  const int BATCH_SIZE = 25;
+  int totalSynced = 0;
+  bool failed = false;
 
-  Serial.printf("\n[OFFLINE] Stored ground truth logs found: %d records (%u bytes). Starting bulk upload to Google Sheets...\n",
-                totalLines, (unsigned int)f.size());
-
-  const int BATCH_SIZE = 10; // 10 records per batch prevents Google Sheets execution timeouts
-  int syncedLineCount = 0;
-  bool uploadFailed = false;
-
-  while (f.available() && !uploadFailed) {
+  while (f.available() && !failed) {
     String lines[BATCH_SIZE];
     int count = 0;
 
@@ -532,19 +331,14 @@ void uploadBufferedOfflineLogs() {
       String l = lines[i];
       // Format: timestamp,distance_cm,level_pct,tank_depth_cm
       int c1 = l.indexOf(',');
-      int c2 = (c1 > 0) ? l.indexOf(',', c1 + 1) : -1;
-      int c3 = (c2 > 0) ? l.indexOf(',', c2 + 1) : -1;
+      int c2 = l.indexOf(',', c1 + 1);
+      int c3 = l.indexOf(',', c2 + 1);
 
       if (c1 > 0 && c2 > 0) {
         String ts   = l.substring(0, c1);
         String dist = l.substring(c1 + 1, c2);
         String lvl  = (c3 > 0) ? l.substring(c2 + 1, c3) : l.substring(c2 + 1);
         String dpt  = (c3 > 0) ? l.substring(c3 + 1) : String(DEFAULT_TANK_DEPTH_CM, 1);
-
-        ts.trim(); dist.trim(); lvl.trim(); dpt.trim();
-        if (dist.length() == 0) dist = "0.0";
-        if (lvl.length() == 0) lvl = "0.0";
-        if (dpt.length() == 0) dpt = String(DEFAULT_TANK_DEPTH_CM, 1);
 
         if (validRecords > 0) json += ",";
         json += "{\"timestamp\":\"" + ts + "\",\"distance_cm\":" + dist +
@@ -557,52 +351,35 @@ void uploadBufferedOfflineLogs() {
     if (validRecords > 0) {
       bool ok = postBulkJsonToGoogleSheets(json);
       if (ok) {
-        syncedLineCount += count;
-        Serial.printf("[OFFLINE] Synced batch of %d records (Total: %d/%d)...\n", count, syncedLineCount, totalLines);
+        totalSynced += validRecords;
+        Serial.printf("[OFFLINE] Synced batch of %d records (Total: %d)...\n", validRecords, totalSynced);
       } else {
-        Serial.printf("[OFFLINE] Batch upload failed at record index %d! Halting drain without losing data.\n", syncedLineCount);
-        uploadFailed = true;
+        Serial.println(F("[OFFLINE] Batch upload failed! Halting drain for retry."));
+        failed = true;
         break;
       }
-    } else {
-      // Corrupt line encountered, advance past it
-      syncedLineCount += count;
     }
     delay(200);
   }
-  f.close();
 
-  // Bulletproof queue maintenance: ZERO DATA LOSS
-  if (!uploadFailed && syncedLineCount >= totalLines) {
+  if (!failed && !f.available()) {
+    f.close();
     SPIFFS.remove(OFFLINE_QUEUE_FILE);
-    Serial.printf("[OFFLINE] SUCCESS: All %d offline records synchronized! Queue cleared.\n\n", syncedLineCount);
-  } else if (syncedLineCount > 0) {
-    // Partial success: Only remove the lines that were confirmed uploaded!
-    File rf = SPIFFS.open(OFFLINE_QUEUE_FILE, FILE_READ);
-    if (rf) {
-      int skipped = 0;
-      while (rf.available() && skipped < syncedLineCount) {
-        if (rf.read() == '\n') skipped++;
-      }
-      String remainingData = "";
-      while (rf.available()) {
-        remainingData += rf.readStringUntil('\n') + "\n";
-      }
-      rf.close();
-
-      SPIFFS.remove(OFFLINE_QUEUE_FILE);
-      if (remainingData.length() > 0) {
-        File wf = SPIFFS.open(OFFLINE_QUEUE_FILE, FILE_WRITE);
-        if (wf) {
-          wf.print(remainingData);
-          wf.close();
-        }
-      }
-      Serial.printf("[OFFLINE] Retained %d unuploaded records in queue for next retry.\n", totalLines - syncedLineCount);
-    }
+    Serial.printf("[OFFLINE] SUCCESS: All %d offline records synchronized! Queue cleared.\n\n", totalSynced);
   } else {
-    // Zero records were uploaded: Leave the file 100% untouched!
-    Serial.printf("[OFFLINE] Upload failed: All %d records safely preserved in Flash memory.\n", totalLines);
+    String rem = "";
+    while (f.available()) {
+      rem += f.readStringUntil('\n') + "\n";
+    }
+    f.close();
+    SPIFFS.remove(OFFLINE_QUEUE_FILE);
+    if (rem.length() > 0) {
+      File rf = SPIFFS.open(OFFLINE_QUEUE_FILE, FILE_WRITE);
+      if (rf) {
+        rf.print(rem);
+        rf.close();
+      }
+    }
   }
 }
 
@@ -674,7 +451,6 @@ bool sendToGoogleSheets(const String& timestampStr) {
   url += "&distance_cm=" + String(measuredDistanceCm, 1);
   url += "&level_pct=" + String(waterLevelPct, 1);
   url += "&tank_depth_cm=" + String(tankDepthCm, 1);
-  url += "&sensor_offset_cm=" + String(sensorOffsetCm, 1);
 
   Serial.printf("[SHEETS] Uploading Ground Truth to: %s\n", url.c_str());
   bool success = false;
@@ -733,15 +509,13 @@ void maintainWiFi() {
   lastCheck = now;
 
   if (WiFi.status() == WL_CONNECTED) {
-    lastKnownChannel = WiFi.channel();
     if (!wasConnected) {
       wasConnected = true;
       disconnectStart = 0;
-      Serial.printf("\n[WIFI] Wi-Fi Restored! IP: %s | RSSI: %d dBm | Channel: %d\n",
-                    WiFi.localIP().toString().c_str(), WiFi.RSSI(), lastKnownChannel);
+      Serial.printf("\n[WIFI] Wi-Fi Restored! IP: %s | RSSI: %d dBm\n",
+                    WiFi.localIP().toString().c_str(), WiFi.RSSI());
       configTime(GMT_OFFSET_SEC, DAYLIGHT_OFFSET_SEC, NTP_SERVER); // Resync NTP
-      delay(2000); // 2-second stabilization delay for DHCP & DNS resolver
-      uploadBufferedOfflineLogs(); // Drain offline backlog!
+      uploadBufferedOfflineLogs(); // Immediately drain offline backlog!
     }
     return;
   }
@@ -751,11 +525,6 @@ void maintainWiFi() {
     wasConnected = false;
     disconnectStart = now;
     Serial.println(F("\n[WIFI] WARNING: Wi-Fi dropped! Storing ground truth in Flash memory..."));
-  }
-
-  // Keep ESP-NOW locked to last known channel even while disconnected
-  if (lastKnownChannel > 0 && lastKnownChannel <= 14) {
-    esp_wifi_set_channel(lastKnownChannel, WIFI_SECOND_CHAN_NONE);
   }
 
   unsigned long offlineSec = (disconnectStart > 0) ? ((now - disconnectStart) / 1000) : 0;

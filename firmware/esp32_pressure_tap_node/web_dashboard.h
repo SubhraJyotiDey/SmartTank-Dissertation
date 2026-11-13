@@ -9,9 +9,6 @@ const char DASHBOARD_HTML[] PROGMEM = R"rawliteral(
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
-  <meta http-equiv="Pragma" content="no-cache">
-  <meta http-equiv="Expires" content="0">
   <title>Smart Tank | Non-Invasive Hydrostatic Level Monitor</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -476,12 +473,7 @@ const char DASHBOARD_HTML[] PROGMEM = R"rawliteral(
         </div>
         <div>
           <h1>Smart Tank Hydrostatic Estimator</h1>
-          <div class="subtitle">
-            <span>Designed &amp; Developed by</span>
-            <span style="color:#38bdf8; font-weight:600;">Subhra Jyoti Dey</span>
-            <span>•</span>
-            <span>Non-Invasive Sensing Architecture</span>
-          </div>
+          <div class="subtitle">Non-Invasive Inline Pressure Sensing Node (ESP32)</div>
         </div>
       </div>
       <div class="top-badges">
@@ -492,15 +484,12 @@ const char DASHBOARD_HTML[] PROGMEM = R"rawliteral(
           <span class="dot"></span>
           <span id="stateText">STATIC BASELINE</span>
         </div>
-        <div id="otaBadge" class="badge" onclick="triggerImmediateFirmwareUpdate(0)" style="background: rgba(168,85,247,0.15); border-color: rgba(168,85,247,0.3); color: #c084fc; font-weight: 600; cursor: pointer;" title="Click to update firmware immediately via Cloud OTA">
-          OTA: <span id="otaModeText" style="margin-left:4px;">Auto 15m (v1.2.6)</span> ⚡
+        <div id="otaBadge" class="badge" style="background: rgba(168,85,247,0.15); border-color: rgba(168,85,247,0.3); color: #c084fc; font-weight: 600;">
+          OTA: <span id="otaModeText" style="margin-left:4px;">Auto 15m (v1.1.0)</span>
         </div>
         <div class="badge" style="background: rgba(255,255,255,0.06); border-color: rgba(255,255,255,0.1); color: var(--text-muted);">
           NTP: <span id="clockTime" style="color:#fff; margin-left:4px;">--:--:--</span>
         </div>
-        <a href="https://subhrajyotidey.github.io/smarttank-dashboard/" target="_blank" class="badge" style="background: rgba(14,165,233,0.15); border-color: rgba(14,165,233,0.3); color: #38bdf8; text-decoration:none;" title="Open Global Cloud Dashboard (accessible anywhere in the world)">
-          🌐 Global Cloud Dashboard ↗
-        </a>
       </div>
     </header>
 
@@ -528,18 +517,10 @@ const char DASHBOARD_HTML[] PROGMEM = R"rawliteral(
             <span>25%</span>
             <span>0%</span>
           </div>
-
-          <!-- Solid Hydrostatic Fluid Fill -->
           <div id="waterFill" class="water-fill" style="height: 0%;">
             <div class="water-wave"></div>
           </div>
-
-          <!-- DOTTED YELLOW LINE: Rooftop Ultrasonic Water Level Estimation -->
-          <div id="usLevelLine" style="display: none; position: absolute; left: 0; width: 100%; height: 0; border-top: 3px dotted #eab308; box-shadow: 0 0 12px rgba(234, 179, 8, 0.9); z-index: 10; pointer-events: none; transition: bottom 0.6s cubic-bezier(0.4, 0, 0.2, 1); bottom: 0%;">
-            <span style="position: absolute; left: 8px; top: -19px; background: rgba(15, 23, 42, 0.92); border: 1px solid #eab308; color: #facc15; font-size: 0.62rem; font-family: 'JetBrains Mono', monospace; font-weight: 700; padding: 1px 5px; border-radius: 4px; white-space: nowrap;">US: <span id="usLevelBadgeVal">--%</span></span>
-          </div>
         </div>
-
         <div class="tank-value-display">
           <div class="big-pct"><span id="levelPct">--</span><span style="font-size: 1.5rem;">%</span></div>
           <div class="liters-label"><span id="volumeL">--</span> Liters Available</div>
@@ -549,7 +530,7 @@ const char DASHBOARD_HTML[] PROGMEM = R"rawliteral(
       <!-- Telemetry & Live Pressure Dynamics Chart -->
       <div class="card">
         <div class="card-title">
-          <span>Real-time Hydraulic &amp; Ultrasonic Metrics</span>
+          <span>Real-time Hydraulic Metrics</span>
           <span style="font-size: 0.8rem; color: var(--text-muted);">Sampling @ 10Hz</span>
         </div>
 
@@ -569,14 +550,6 @@ const char DASHBOARD_HTML[] PROGMEM = R"rawliteral(
           <div class="metric-card">
             <div class="metric-label">Rate (dP/dt)</div>
             <div class="metric-val"><span id="dPdt">0.00</span><span class="metric-unit">kPa/s</span></div>
-          </div>
-          <div class="metric-card" style="border-color: rgba(234, 179, 8, 0.35);">
-            <div class="metric-label" style="color: #fde047;">US Ground Truth</div>
-            <div class="metric-val" style="color: #facc15;"><span id="usLiveLevel">--</span><span class="metric-unit" style="color: #fde047;">%</span></div>
-          </div>
-          <div class="metric-card" style="border-color: rgba(52, 211, 153, 0.35);">
-            <div class="metric-label" style="color: #6ee7b7;">US Distance</div>
-            <div class="metric-val" style="color: #34d399;"><span id="usLiveDist">--</span><span class="metric-unit" style="color: #6ee7b7;">cm</span></div>
           </div>
         </div>
 
@@ -640,18 +613,14 @@ const char DASHBOARD_HTML[] PROGMEM = R"rawliteral(
           <span>Tank Dimensions & Google Sheets Sync</span>
         </div>
 
-        <div style="display: flex; gap: 1rem; flex-wrap: wrap;">
-          <div class="form-group" style="flex: 1; min-width: 120px;">
+        <div style="display: flex; gap: 1rem;">
+          <div class="form-group" style="flex: 1;">
             <label>Tank Height / Depth (cm)</label>
             <input type="number" id="inputTankDepth" value="122">
           </div>
-          <div class="form-group" style="flex: 1; min-width: 120px;">
+          <div class="form-group" style="flex: 1;">
             <label>Tank Capacity (Liters)</label>
             <input type="number" id="inputTankCap" value="1000">
-          </div>
-          <div class="form-group" style="flex: 1; min-width: 170px;">
-            <label>Ultrasound Tank Full Dist (cm) <span style="font-size: 0.72rem; color: var(--accent-cyan);">(100% Full Air Gap)</span></label>
-            <input type="number" step="0.1" id="inputUsFullDist" value="6.0" placeholder="6.0">
           </div>
         </div>
 
@@ -695,33 +664,13 @@ const char DASHBOARD_HTML[] PROGMEM = R"rawliteral(
             <div style="font-family:'JetBrains Mono'; color:#10b981; font-size:0.95rem;" id="otaStatusDetail">Up to date</div>
           </div>
         </div>
-        <div style="display: flex; gap: 0.75rem; flex-wrap: wrap; margin-bottom: 0.75rem;">
+        <div style="display: flex; gap: 0.75rem; flex-wrap: wrap;">
           <input type="password" id="inputGhToken" placeholder="Optional GitHub Token (PAT) for private repo" style="flex: 2; min-width: 250px;">
           <button class="btn btn-secondary" onclick="saveGithubToken()">Save Token</button>
-          <button class="btn btn-secondary" onclick="triggerOtaCheckNow()">
+          <button class="btn btn-primary" onclick="triggerOtaCheckNow()">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
-            Check Updates
+            Check Updates Now
           </button>
-        </div>
-        <div style="background: rgba(147, 51, 234, 0.08); border: 1px solid rgba(168, 85, 247, 0.25); border-radius: 10px; padding: 0.85rem 1rem;">
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.35rem; flex-wrap: wrap; gap: 0.5rem;">
-            <span style="font-weight: 700; color: #c084fc; font-size: 0.88rem;">⚡ Immediate Cloud OTA Firmware Flash</span>
-            <span style="font-size: 0.72rem; color: #a855f7; background: rgba(168, 85, 247, 0.15); padding: 2px 8px; border-radius: 6px; font-weight: 600;">BYPASS 15-MIN TIMER</span>
-          </div>
-          <p class="note-text" style="margin-bottom: 0.6rem; font-size: 0.75rem;">
-            Bypasses the 15-minute background polling interval. Force-downloads and flashes the newest release binary from GitHub immediately.
-          </p>
-          <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
-            <button class="btn" style="background: linear-gradient(135deg, #9333ea, #c026d3); color: white; font-weight: 600; border: none; box-shadow: 0 4px 15px rgba(147, 51, 234, 0.35);" onclick="triggerImmediateFirmwareUpdate(0)">
-              ⚡ Update Both Nodes Immediately
-            </button>
-            <button class="btn btn-secondary" style="font-size: 0.8rem;" onclick="triggerImmediateFirmwareUpdate(1)">
-              ⚡ Flash Node 1 (Pressure)
-            </button>
-            <button class="btn btn-secondary" style="font-size: 0.8rem;" onclick="triggerImmediateFirmwareUpdate(2)">
-              ⚡ Flash Node 2 (Ultrasonic)
-            </button>
-          </div>
         </div>
       </div>
     </div>
@@ -813,23 +762,14 @@ const char DASHBOARD_HTML[] PROGMEM = R"rawliteral(
         <p class="note-text" style="margin-bottom: 1rem;">
           Wipe all previous test logs from Google Sheets and begin the clean 24-hour synchronized recording now.
         </p>
-        <div style="margin-top: 1.5rem; display: flex; gap: 0.6rem; flex-wrap: wrap;">
+        <div style="margin-top: 1.5rem;">
           <button class="btn btn-danger" onclick="clearSheetData()">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-            Clear Sheet &amp; Start 24-Hr Experiment
-          </button>
-          <button class="btn btn-warning" onclick="rebootNode(2)" style="font-size:0.8rem;">
-            🔄 Reboot Node 2 (Ultrasonic)
+            Clear Sheet & Start 24-Hr Experiment
           </button>
         </div>
       </div>
     </div>
-
-    <!-- Footer -->
-    <footer style="margin-top: 2rem; padding-top: 1.25rem; border-top: 1px solid var(--card-border); display: flex; justify-content: space-between; flex-wrap: wrap; gap: 0.8rem; font-size: 0.82rem; color: var(--text-muted);">
-      <div><strong>SmartTank Dissertation System</strong> — Real-Time Non-Invasive Hydrostatic Sensing Architecture</div>
-      <div>Designed &amp; Developed by <strong style="color: #38bdf8;">Subhra Jyoti Dey</strong> • Dissertation 2026</div>
-    </footer>
   </div>
 
   <div id="toast" class="toast">Action completed successfully</div>
@@ -841,22 +781,9 @@ const char DASHBOARD_HTML[] PROGMEM = R"rawliteral(
     const pressureData = [];
     let isFlowingPrev = false;
 
-    // High-Precision Digital Oscilloscope Parameters
-    const OSCILLOSCOPE_POINTS = 100; // 100-sample high-fidelity buffer
-    let lastOscilloscopeUpdate = Date.now();
-    let targetPressure = 67.0;
-
-    // Initialize Chart with hardware-accelerated linear phosphor oscilloscope trace
+    // Initialize Chart
     function initChart() {
       const ctx = document.getElementById('pressureChart').getContext('2d');
-
-      labels.length = 0;
-      pressureData.length = 0;
-      for (let i = 0; i < OSCILLOSCOPE_POINTS; i++) {
-        labels.push('');
-        pressureData.push(targetPressure);
-      }
-
       chart = new Chart(ctx, {
         type: 'line',
         data: {
@@ -867,44 +794,29 @@ const char DASHBOARD_HTML[] PROGMEM = R"rawliteral(
             borderColor: '#38bdf8',
             backgroundColor: 'rgba(56, 189, 248, 0.08)',
             borderWidth: 2,
-            tension: 0, // Zero spline calculation overhead = zero lag!
+            tension: 0.25,
             fill: true,
-            pointRadius: 0,
-            pointHoverRadius: 0
+            pointRadius: 0
           }]
         },
         options: {
           responsive: true,
           maintainAspectRatio: false,
-          plugins: {
-            legend: { display: false },
-            tooltip: { enabled: false }
-          },
+          plugins: { legend: { display: false } },
           scales: {
-            x: { display: false, grid: { display: false } },
+            x: {
+              display: false
+            },
             y: {
-              suggestedMin: 55,
-              suggestedMax: 80,
+              suggestedMin: 0,
+              suggestedMax: 65,
               grid: { color: 'rgba(255, 255, 255, 0.05)' },
               ticks: { color: '#94a3b8', font: { family: 'JetBrains Mono', size: 10 } }
             }
           },
-          animation: false,
-          hover: { mode: null }
+          animation: { duration: 0 }
         }
       });
-
-      // Sweep Keepalive Engine: sweeps flatline baseline when poll pauses
-      setInterval(() => {
-        if (Date.now() - lastOscilloscopeUpdate > 350 && chart && pressureData.length > 0) {
-          const lastVal = pressureData[pressureData.length - 1];
-          pressureData.push(lastVal);
-          if (pressureData.length > OSCILLOSCOPE_POINTS) {
-            pressureData.shift();
-          }
-          chart.update('none');
-        }
-      }, 200);
     }
 
     // Fetch Telemetry Data from ESP32 REST API
@@ -939,46 +851,9 @@ const char DASHBOARD_HTML[] PROGMEM = R"rawliteral(
         document.getElementById('clockTime').innerText = d.time_str || '--:--:--';
         document.getElementById('nextLogTime').innerText = d.next_log_slot || '--';
 
-        // Rooftop Ultrasound Dotted Line & Metrics
-        const usLine = document.getElementById('usLevelLine');
-        const usBadge = document.getElementById('usLevelBadgeVal');
-        const usLiveLvl = document.getElementById('usLiveLevel');
-        const usLiveDst = document.getElementById('usLiveDist');
-
-        if (d.rooftop_level !== undefined && d.rooftop_level >= 0) {
-          usLine.style.display = 'block';
-          usLine.style.bottom = d.rooftop_level + '%';
-          usBadge.innerText = d.rooftop_level.toFixed(1) + '%';
-          usLiveLvl.innerText = d.rooftop_level.toFixed(1);
-        } else {
-          usLine.style.display = 'none';
-          usLiveLvl.innerText = 'OFFLINE';
-        }
-
-        if (d.rooftop_dist !== undefined && d.rooftop_dist > 0) {
-          usLiveDst.innerText = d.rooftop_dist.toFixed(1);
-        } else {
-          usLiveDst.innerText = 'OFFLINE';
-        }
-
         // Calibration Display
         document.getElementById('valPEmpty').innerText = d.p_empty.toFixed(1);
         document.getElementById('valPFull').innerText = d.p_full.toFixed(1);
-
-        // Populate Tank & Ultrasound Config Inputs (if not user-focused)
-        const usDistInput = document.getElementById('inputUsFullDist');
-        if (usDistInput && !usDistInput.matches(':focus')) {
-          if (d.us_full_dist !== undefined) usDistInput.value = d.us_full_dist.toFixed(1);
-          else if (d.offset_cm !== undefined) usDistInput.value = d.offset_cm.toFixed(1);
-        }
-        const depthInput = document.getElementById('inputTankDepth');
-        if (depthInput && !depthInput.matches(':focus') && d.tank_depth) {
-          depthInput.value = d.tank_depth;
-        }
-        const capInput = document.getElementById('inputTankCap');
-        if (capInput && !capInput.matches(':focus') && d.tank_capacity) {
-          capInput.value = d.tank_capacity;
-        }
 
         // State Badge
         const badge = document.getElementById('stateBadge');
@@ -1000,80 +875,15 @@ const char DASHBOARD_HTML[] PROGMEM = R"rawliteral(
           compBanner.style.display = 'none';
         }
 
-        // Direct Hardware Stream Oscilloscope Rendering
-        if (d.pressure_kpa !== undefined && !isNaN(d.pressure_kpa) && d.pressure_kpa > 0) {
-          lastOscilloscopeUpdate = Date.now();
-          targetPressure = d.pressure_kpa;
-          const pVal = parseFloat(d.pressure_kpa.toFixed(2));
-          pressureData.push(pVal);
-          if (pressureData.length > OSCILLOSCOPE_POINTS) {
-            pressureData.shift();
-          }
-          if (chart) {
-            if (pVal > chart.options.scales.y.suggestedMax - 2 || pVal < chart.options.scales.y.suggestedMin + 2) {
-              chart.options.scales.y.suggestedMin = Math.max(0, Math.floor(pVal - 15));
-              chart.options.scales.y.suggestedMax = Math.ceil(pVal + 15);
-            }
-            chart.update('none'); // Direct phosphor trace update
-          }
+        // Update Chart
+        const now = new Date().toLocaleTimeString();
+        labels.push(now);
+        pressureData.push(d.pressure_kpa);
+        if (labels.length > 50) {
+          labels.shift();
+          pressureData.shift();
         }
-
-        // Synchronized High-Res Event Status (Unified in single 1-second poll)
-        const statusEl = document.getElementById('eventLiveStatus');
-        const elapsedEl = document.getElementById('eventElapsedText');
-        const samplesEl = document.getElementById('eventSamplesText');
-        const rooftopEl = document.getElementById('eventRooftopText');
-        const progContainer = document.getElementById('eventUploadProgressContainer');
-        const uploadBar = document.getElementById('eventUploadBar');
-        const uploadPct = document.getElementById('eventUploadPct');
-        const recDot = document.getElementById('recDot');
-        const btnStart = document.getElementById('btnStartEvent');
-        const btnStop = document.getElementById('btnStopEvent');
-
-        if (statusEl && recDot) {
-          if (d.event_recording) {
-            statusEl.innerText = '🔴 RECORDING (10 Hz Precision)...';
-            statusEl.style.color = '#ef4444';
-            recDot.style.background = '#ef4444';
-            recDot.style.animation = 'pulseAlert 1s infinite';
-            if (elapsedEl) elapsedEl.innerText = (d.event_elapsed || 0).toFixed(1) + 's / ' + (d.event_duration || 0).toFixed(0) + 's';
-            if (samplesEl) samplesEl.innerText = (d.event_samples || 0) + ' @ 10Hz';
-            if (progContainer) progContainer.style.display = 'none';
-            if (btnStart) btnStart.style.display = 'none';
-            if (btnStop) btnStop.style.display = 'inline-flex';
-          } else if (d.event_uploading) {
-            statusEl.innerText = '🚀 STREAMING TO SHEET 2...';
-            statusEl.style.color = '#38bdf8';
-            recDot.style.background = '#38bdf8';
-            recDot.style.animation = 'none';
-            if (progContainer) progContainer.style.display = 'block';
-            const pct = d.event_upload_pct || 0;
-            if (uploadBar) uploadBar.style.width = pct + '%';
-            if (uploadPct) uploadPct.innerText = pct + '%';
-            if (elapsedEl) elapsedEl.innerText = 'Uploaded ' + pct + '%';
-            if (samplesEl) samplesEl.innerText = (d.event_samples || 0) + ' samples';
-            if (btnStart) btnStart.style.display = 'none';
-            if (btnStop) btnStop.style.display = 'none';
-          } else {
-            statusEl.innerText = d.event_upload_status || 'Ready to Record';
-            statusEl.style.color = '#10b981';
-            recDot.style.background = '#10b981';
-            recDot.style.animation = 'none';
-            if (progContainer) progContainer.style.display = 'none';
-            if (btnStart) btnStart.style.display = 'inline-flex';
-            if (btnStop) btnStop.style.display = 'none';
-          }
-
-          if (rooftopEl) {
-            if (d.rooftop_dist !== undefined && d.rooftop_dist > 0) {
-              rooftopEl.innerText = d.rooftop_dist.toFixed(1) + ' cm (' + (d.rooftop_level || 0).toFixed(1) + '%)';
-              rooftopEl.style.color = '#34d399';
-            } else {
-              rooftopEl.innerText = 'OFFLINE (-- cm)';
-              rooftopEl.style.color = '#94a3b8';
-            }
-          }
-        }
+        chart.update();
 
       } catch (err) {
         console.error('Fetch error:', err);
@@ -1115,12 +925,11 @@ const char DASHBOARD_HTML[] PROGMEM = R"rawliteral(
     async function saveTankConfig() {
       const depth = document.getElementById('inputTankDepth').value;
       const cap = document.getElementById('inputTankCap').value;
-      const usDist = document.getElementById('inputUsFullDist').value;
       const url = encodeURIComponent(document.getElementById('inputScriptUrl').value);
       try {
-        const res = await fetch(`/api/settings?tank_depth=${depth}&tank_cap=${cap}&us_full_dist=${usDist}&script_url=${url}`, { method: 'POST' });
+        const res = await fetch(`/api/settings?tank_depth=${depth}&tank_cap=${cap}&script_url=${url}`, { method: 'POST' });
         const d = await res.json();
-        showToast(d.message || 'Settings saved (Synced with Ultrasonic Node)');
+        showToast(d.message || 'Settings saved');
       } catch (e) {
         showToast('Failed to save settings');
       }
@@ -1188,20 +997,6 @@ const char DASHBOARD_HTML[] PROGMEM = R"rawliteral(
       }
     }
 
-    async function rebootNode(nodeNum) {
-      const name = nodeNum === 1 ? 'Node 1 (Pressure)' : 'Node 2 (Rooftop Ultrasonic)';
-      if (!confirm(`Are you sure you want to reboot ${name}?`)) return;
-      if (nodeNum === 2) {
-        showToast('Sending reboot command to Node 2...');
-        try {
-          await fetch('http://192.168.29.130/api/reboot', { method: 'POST', mode: 'no-cors' });
-          showToast('Reboot command sent to Node 2!');
-        } catch(e) {
-          showToast('Failed to reach Node 2');
-        }
-      }
-    }
-
     async function triggerOtaCheckNow() {
       showToast("Contacting GitHub for new firmware update...");
       try {
@@ -1211,21 +1006,6 @@ const char DASHBOARD_HTML[] PROGMEM = R"rawliteral(
         fetchStatus();
       } catch(e) {
         showToast("Error checking updates: " + e.message);
-      }
-    }
-
-    async function triggerImmediateFirmwareUpdate(nodeNum) {
-      const targetName = nodeNum === 0 ? 'BOTH nodes' : (nodeNum === 1 ? 'Node 1 (Pressure Node)' : 'Node 2 (Ultrasonic Node)');
-      if (!confirm('⚡ Update firmware on ' + targetName + ' immediately?\n\nThe ESP32 will contact GitHub Releases \'latest\', download the newest firmware binary, flash itself, and reboot.')) return;
-      
-      showToast('⚡ Contacting GitHub to flash ' + targetName + ' immediately...');
-      try {
-        const res = await fetch('/api/ota_update?node=' + nodeNum, { method: 'POST' });
-        const d = await res.json();
-        showToast(d.message || 'OTA update initiated!');
-        fetchStatus();
-      } catch(e) {
-        showToast('Error initiating OTA: ' + e.message);
       }
     }
 
@@ -1258,7 +1038,7 @@ const char DASHBOARD_HTML[] PROGMEM = R"rawliteral(
 
     async function startHighResEvent() {
       const name = document.getElementById('highResEventName').value.trim() || 'Tap Transient Event';
-      const durSec = parseFloat(document.getElementById('highResDurationSec').value) || 15;
+      const durSec = parseFloat(document.getElementById('highResDurationSec').value) || 30;
 
       const formData = new FormData();
       formData.append('name', name);
@@ -1271,7 +1051,9 @@ const char DASHBOARD_HTML[] PROGMEM = R"rawliteral(
         const data = await res.json();
         if (res.ok) {
           showToast('🔴 Recording started: 10 samples/sec into Flash!');
-          fetchStatus(); // Immediately update UI
+          document.getElementById('btnStartEvent').style.display = 'none';
+          document.getElementById('btnStopEvent').style.display = 'inline-flex';
+          pollEventStatus();
         } else {
           showToast('Error: ' + data.message);
         }
@@ -1281,15 +1063,72 @@ const char DASHBOARD_HTML[] PROGMEM = R"rawliteral(
     }
 
     async function stopHighResEvent() {
-      showToast('Stopping recording. Background streaming to Sheet 2...');
+      showToast('Stopping recording. Streaming chunks to Sheet 2...');
       try {
         const res = await fetch('/api/event/stop', { method: 'POST' });
         const data = await res.json();
-        showToast(data.message || 'Background streaming to Sheet 2...');
-        fetchStatus(); // Immediately update UI
+        showToast(data.message || 'Streaming chunks to Sheet 2...');
+        pollEventStatus();
       } catch(e) {
         showToast('Error stopping event: ' + e.message);
       }
+    }
+
+    async function pollEventStatus() {
+      try {
+        const res = await fetch('/api/event/status');
+        if (!res.ok) return;
+        const d = await res.json();
+
+        const statusEl = document.getElementById('eventLiveStatus');
+        const elapsedEl = document.getElementById('eventElapsedText');
+        const samplesEl = document.getElementById('eventSamplesText');
+        const rooftopEl = document.getElementById('eventRooftopText');
+        const progContainer = document.getElementById('eventUploadProgressContainer');
+        const uploadBar = document.getElementById('eventUploadBar');
+        const uploadPct = document.getElementById('eventUploadPct');
+        const recDot = document.getElementById('recDot');
+        const btnStart = document.getElementById('btnStartEvent');
+        const btnStop = document.getElementById('btnStopEvent');
+
+        if (d.recording) {
+          statusEl.innerText = '🔴 RECORDING (10 Hz High-Speed)...';
+          statusEl.style.color = '#ef4444';
+          recDot.style.background = '#ef4444';
+          recDot.style.animation = 'pulseAlert 1s infinite';
+          elapsedEl.innerText = d.elapsed_sec.toFixed(1) + 's / ' + d.duration_sec.toFixed(0) + 's';
+          samplesEl.innerText = d.samples + ' @ 10Hz';
+          rooftopEl.innerText = d.rooftop_dist.toFixed(1) + ' cm (' + d.rooftop_level.toFixed(1) + '%)';
+          progContainer.style.display = 'none';
+          btnStart.style.display = 'none';
+          btnStop.style.display = 'inline-flex';
+          setTimeout(pollEventStatus, 250); // Fast 250ms polling during active recording
+        } else if (d.uploading) {
+          statusEl.innerText = '🚀 STREAMING TO SHEET 2...';
+          statusEl.style.color = '#38bdf8';
+          recDot.style.background = '#38bdf8';
+          recDot.style.animation = 'none';
+          progContainer.style.display = 'block';
+          uploadBar.style.width = d.upload_pct + '%';
+          uploadPct.innerText = d.upload_pct + '%';
+          elapsedEl.innerText = 'Uploaded ' + d.upload_pct + '%';
+          samplesEl.innerText = d.samples + ' samples';
+          btnStart.style.display = 'none';
+          btnStop.style.display = 'none';
+          setTimeout(pollEventStatus, 500); // 500ms polling during chunk streaming
+        } else {
+          statusEl.innerText = d.upload_status || 'Ready to Record';
+          statusEl.style.color = '#10b981';
+          recDot.style.background = '#10b981';
+          recDot.style.animation = 'none';
+          progContainer.style.display = 'none';
+          btnStart.style.display = 'inline-flex';
+          btnStop.style.display = 'none';
+          if (d.rooftop_dist > 0) {
+            rooftopEl.innerText = d.rooftop_dist.toFixed(1) + ' cm (' + d.rooftop_level.toFixed(1) + '%)';
+          }
+        }
+      } catch(e) {}
     }
 
     function showToast(msg) {
@@ -1302,7 +1141,8 @@ const char DASHBOARD_HTML[] PROGMEM = R"rawliteral(
     window.onload = () => {
       initChart();
       fetchStatus();
-      setInterval(fetchStatus, 1000); // Single unified 1-sec telemetry & event status poll
+      setInterval(fetchStatus, 1000); // Poll telemetry every 1 sec
+      pollEventStatus();
     };
   </script>
 </body>

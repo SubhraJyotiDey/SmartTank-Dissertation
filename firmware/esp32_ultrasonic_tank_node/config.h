@@ -17,10 +17,9 @@
 // Total height of water column when tank is 100% full (122 cm)
 #define DEFAULT_TANK_DEPTH_CM   122.0f
 
-// Ultrasonic Ground Truth Reference: Air gap distance from sensor face down to the 100% full water mark (cm)
-// Calibrated: 6.0 cm measured from sensor face to water surface when tank is 100% full (Tank Full Scenario)
-#define DEFAULT_SENSOR_OFFSET_CM            6.0f
-#define DEFAULT_ULTRASONIC_FULL_DISTANCE_CM DEFAULT_SENSOR_OFFSET_CM
+// Mounting offset: Distance from sensor face down to the 100% full water mark (cm)
+// Calibrated: 11.0 cm measured from sensor face to water surface when tank is 100% full
+#define DEFAULT_SENSOR_OFFSET_CM 11.0f
 
 // Filter samples per measurement
 #define ULTRASONIC_SAMPLES      7
@@ -52,7 +51,7 @@
 // =========================================================================
 // 5. AUTOMATIC CLOUD OVER-THE-AIR (OTA) SELF-UPDATE (EVERY 15 MINUTES)
 // =========================================================================
-#define FIRMWARE_VERSION            "1.3.0"
+#define FIRMWARE_VERSION            "1.2.0"
 #define AUTO_OTA_ENABLED            true
 #define OTA_CHECK_INTERVAL_MIN      15      // Check for new updates every 15 minutes
 #define OTA_NODE_NAME               "ultrasonic_node"
