@@ -503,6 +503,66 @@
       }
     }
 
+    /* Scenario Coordination Cards */
+    .scenario-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 1rem;
+      margin-top: 0.75rem;
+    }
+
+    .scenario-card {
+      background: rgba(15, 23, 42, 0.6);
+      border: 1px solid var(--card-border);
+      border-radius: 12px;
+      padding: 1rem;
+      transition: all 0.3s ease;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .scenario-card.active-scenario {
+      border-color: #0ea5e9;
+      background: rgba(14, 165, 233, 0.1);
+      box-shadow: 0 0 20px rgba(14, 165, 233, 0.25);
+    }
+
+    .scenario-pill {
+      display: inline-block;
+      font-size: 0.7rem;
+      font-weight: 700;
+      padding: 2px 8px;
+      border-radius: 9999px;
+      margin-bottom: 0.5rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .sync-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 0.75rem;
+      font-size: 0.85rem;
+    }
+
+    .sync-table th, .sync-table td {
+      padding: 0.65rem 0.85rem;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+      text-align: left;
+    }
+
+    .sync-table th {
+      color: var(--text-muted);
+      font-weight: 600;
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .sync-table tr:hover {
+      background: rgba(255, 255, 255, 0.02);
+    }
+
     .btn-group {
       display: flex;
       gap: 0.65rem;
@@ -733,13 +793,22 @@
           <span class="dot"></span>
           <span id="stateText">STATIC BASELINE</span>
         </div>
+        <!-- ESP-NOW Scenario Badge -->
+        <div id="scenarioBadge" class="badge" style="background: rgba(16,185,129,0.15); border-color: rgba(16,185,129,0.3); color: #34d399;" title="Real-time ESP-NOW & Wi-Fi Scenario State">
+          <span class="dot" style="background: #10b981;"></span>
+          <span id="scenarioText">SCENARIO 1: DUAL ONLINE</span>
+        </div>
+        <!-- 1-Min Google Sheets Sync Countdown -->
+        <div class="badge" style="background: rgba(56,189,248,0.12); border-color: rgba(56,189,248,0.3); color: #38bdf8;" title="Next synchronized Google Sheets 1-minute slot upload">
+          ⏱️ SHEETS: <span id="sheetsCountdown" style="font-family:'JetBrains Mono'; font-weight:700; margin-left:4px;">--s</span>
+        </div>
         <!-- Hardware ADC Indicator -->
         <div id="adcBadge" class="badge" onclick="openAdcModal()" style="background: rgba(14,165,233,0.15); border-color: rgba(14,165,233,0.3); color: #38bdf8; cursor:pointer;" title="Click to learn what 16-bit ADC counts mean">
           ADC: <span id="adcModeText" style="margin-left:4px;">ADS1115 (16-bit) ℹ️</span>
         </div>
         <!-- Cloud OTA Version Badge (Click to Update Immediately) -->
         <div id="otaBadge" class="badge" onclick="sendUpdateFirmwareNow(0)" style="background: rgba(168,85,247,0.15); border-color: rgba(168,85,247,0.3); color: #c084fc; cursor: pointer;" title="Click to update firmware immediately on both nodes via Cloud OTA">
-          OTA: <span id="otaVersionText" style="margin-left:4px;">v1.2.6</span> ⚡
+          OTA: <span id="otaVersionText" style="margin-left:4px;">v1.3.0</span> ⚡
         </div>
         <!-- Local IP Link Pill (if user is on home network) -->
         <a id="localLink" href="http://192.168.29.125/" target="_blank" class="badge btn-secondary" style="color:var(--text-muted); text-decoration:none;" title="Open local node if on same home Wi-Fi">
@@ -866,6 +935,160 @@
       </div>
     </div>
 
+    <!-- ESP-NOW & Wi-Fi Scenario Coordination Console -->
+    <div class="card" style="border: 1px solid rgba(14, 165, 233, 0.4); box-shadow: 0 0 30px rgba(14, 165, 233, 0.12); margin-bottom: 1.5rem;">
+      <div class="card-title">
+        <div style="display: flex; align-items: center; gap: 0.6rem;">
+          <span style="font-size: 1.2rem;">🛰️</span>
+          <span style="color: #ffffff; font-weight: 700;">Scenario-Aware Dual-Radio Coordination (ESP-NOW + Wi-Fi)</span>
+        </div>
+        <div style="display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;">
+          <span id="activeScenarioPill" style="font-size: 0.72rem; color: #34d399; font-weight: 700; background: rgba(16,185,129,0.15); padding: 3px 8px; border-radius: 6px;">SCENARIO 1: DUAL ONLINE</span>
+          <span style="font-size: 0.72rem; color: #38bdf8; font-weight: 700; background: rgba(56,189,248,0.15); padding: 3px 8px; border-radius: 6px;">PEER-TO-PEER MESH</span>
+        </div>
+      </div>
+      <p class="note-text" style="margin-bottom: 1rem;">
+        Intelligent dual-radio architecture enabling ESP32 Wi-Fi Station and ESP-NOW peer-to-peer transmission to operate simultaneously on the same radio channel. The system dynamically transitions between three operational scenarios based on network link health.
+      </p>
+
+      <div class="scenario-grid">
+        <!-- Scenario 1 Card -->
+        <div id="scCard1" class="scenario-card active-scenario">
+          <span class="scenario-pill" style="background: rgba(16,185,129,0.2); color: #34d399;">Scenario 1: Normal Infrastructure</span>
+          <h4 style="font-size: 0.95rem; margin-bottom: 0.4rem; color: #f8fafc;">Dual Station Online + Parallel Mesh</h4>
+          <p style="font-size: 0.78rem; color: var(--text-muted); line-height: 1.5; margin-bottom: 0.75rem;">
+            Both Node 1 (Tap) and Node 2 (Rooftop) connect to home Wi-Fi AP. Both nodes upload independently to Google Sheets every 1 minute. ESP-NOW operates in parallel for sub-5ms ground truth exchange and overflow safety.
+          </p>
+          <div style="font-family:'JetBrains Mono'; font-size: 0.72rem; color: #94a3b8; background: rgba(0,0,0,0.3); padding: 6px 10px; border-radius: 6px;">
+            <div>• Wi-Fi STA: <span style="color:#10b981;">Connected (Both Nodes)</span></div>
+            <div>• Google Sheets: <span style="color:#38bdf8;">Independent 1-Min Upload</span></div>
+            <div>• ESP-NOW: <span style="color:#10b981;">Active (&lt; 5ms latency)</span></div>
+          </div>
+        </div>
+
+        <!-- Scenario 2 Card -->
+        <div id="scCard2" class="scenario-card">
+          <span class="scenario-pill" style="background: rgba(245,158,11,0.2); color: #fbbf24;">Scenario 2: Gateway Relay Mode</span>
+          <h4 style="font-size: 0.95rem; margin-bottom: 0.4rem; color: #f8fafc;">Rooftop Wi-Fi Deadzone Proxy</h4>
+          <p style="font-size: 0.78rem; color: var(--text-muted); line-height: 1.5; margin-bottom: 0.75rem;">
+            Overhead tank Node 2 loses Wi-Fi signal. Node 2 broadcasts 1-minute ground truth packets over ESP-NOW. Node 1 acts as <strong>Internet Gateway</strong>, relaying Node 2's data to Google Sheets on its behalf.
+          </p>
+          <div style="font-family:'JetBrains Mono'; font-size: 0.72rem; color: #94a3b8; background: rgba(0,0,0,0.3); padding: 6px 10px; border-radius: 6px;">
+            <div>• Wi-Fi STA: <span style="color:#eab308;">Node 1 Online | Node 2 Offline</span></div>
+            <div>• Gateway Proxy: <span style="color:#38bdf8;">Node 1 Relays Node 2 to Cloud</span></div>
+            <div>• Data Loss: <span style="color:#10b981;">0% (Full Zero-Loss Forwarding)</span></div>
+          </div>
+        </div>
+
+        <!-- Scenario 3 Card -->
+        <div id="scCard3" class="scenario-card">
+          <span class="scenario-pill" style="background: rgba(239,68,68,0.2); color: #f87171;">Scenario 3: Total Wi-Fi Outage</span>
+          <h4 style="font-size: 0.95rem; margin-bottom: 0.4rem; color: #f8fafc;">Autonomous Mesh &amp; Flash Backlog</h4>
+          <p style="font-size: 0.78rem; color: var(--text-muted); line-height: 1.5; margin-bottom: 0.75rem;">
+            Home Wi-Fi router powers down. Both nodes lock radio to last known channel, maintaining peer-to-peer ESP-NOW safety and metrics. Telemetry is queued in Flash SPIFFS and auto-drained when Wi-Fi recovers.
+          </p>
+          <div style="font-family:'JetBrains Mono'; font-size: 0.72rem; color: #94a3b8; background: rgba(0,0,0,0.3); padding: 6px 10px; border-radius: 6px;">
+            <div>• Wi-Fi STA: <span style="color:#ef4444;">Offline (Router Down)</span></div>
+            <div>• ESP-NOW Mesh: <span style="color:#10b981;">Active on Locked Channel</span></div>
+            <div>• Flash Backlog: <span style="color:#c084fc;">Buffering in SPIFFS Flash</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Synchronized 1-Minute Dual-Node Google Sheets Hub -->
+    <div class="card" style="border: 1px solid rgba(16, 185, 129, 0.35); box-shadow: 0 0 30px rgba(16, 185, 129, 0.1); margin-bottom: 1.5rem;">
+      <div class="card-title">
+        <div style="display: flex; align-items: center; gap: 0.6rem;">
+          <span style="font-size: 1.2rem;">📊</span>
+          <span style="color: #ffffff; font-weight: 700;">Synchronized Dual-Node Google Sheets Logging (1-Minute Cadence)</span>
+        </div>
+        <div style="display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;">
+          <span style="font-size: 0.72rem; color: #34d399; font-weight: 700; background: rgba(16,185,129,0.15); padding: 3px 8px; border-radius: 6px;">NTP SYNCHRONIZED (:00)</span>
+          <span style="font-size: 0.72rem; color: #38bdf8; font-weight: 700; background: rgba(56,189,248,0.15); padding: 3px 8px; border-radius: 6px;">AUTOMATIC Δ ERROR CALCULATION</span>
+        </div>
+      </div>
+      <p class="note-text" style="margin-bottom: 1rem;">
+        Every minute on the exact <code>:00</code> second boundary, Node 1 (Hydrostatic Pressure) and Node 2 (Rooftop Ultrasound) post their readings to Google Apps Script. Google Sheets merges both nodes into the same row in real time and computes the estimation error Δ.
+      </p>
+
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 0.75rem; margin-bottom: 1rem;">
+        <div class="metric-card" style="border-color: rgba(56,189,248,0.35); background: rgba(56,189,248,0.04);">
+          <div class="metric-label" style="color: #7dd3fc;">Node 1 (Pressure Predicted)</div>
+          <div class="metric-val" style="color: #38bdf8;"><span id="tableNode1Level">--</span></div>
+          <div style="font-size: 0.72rem; color: var(--text-muted); margin-top: 3px;">Inline Tap Hydrostatic Head</div>
+        </div>
+
+        <div class="metric-card" style="border-color: rgba(234,179,8,0.35); background: rgba(234,179,8,0.04);">
+          <div class="metric-label" style="color: #fde047;">Node 2 (Ultrasonic Ground Truth)</div>
+          <div class="metric-val" style="color: #facc15;"><span id="tableNode2Level">--</span></div>
+          <div style="font-size: 0.72rem; color: var(--text-muted); margin-top: 3px;">Overhead Tank Acoustic Echo</div>
+        </div>
+
+        <div class="metric-card" style="border-color: rgba(239,68,68,0.35); background: rgba(239,68,68,0.04);">
+          <div class="metric-label" style="color: #fca5a5;">Absolute Estimation Error (Δ)</div>
+          <div class="metric-val" style="color: #ef4444;"><span id="liveDeltaPct">--</span></div>
+          <div style="font-size: 0.72rem; color: var(--text-muted); margin-top: 3px;">Level % Difference</div>
+        </div>
+
+        <div class="metric-card" style="border-color: rgba(168,85,247,0.35); background: rgba(168,85,247,0.04);">
+          <div class="metric-label" style="color: #d8b4fe;">Water Column Depth Error</div>
+          <div class="metric-val" style="color: #c084fc;"><span id="liveDepthErr">--</span></div>
+          <div style="font-size: 0.72rem; color: var(--text-muted); margin-top: 3px;">Physical Height Discrepancy</div>
+        </div>
+      </div>
+
+      <div style="overflow-x: auto;">
+        <table class="sync-table">
+          <thead>
+            <tr>
+              <th>Node Entity</th>
+              <th>Hardware Sensor</th>
+              <th>Physical Parameter</th>
+              <th>Measurement Mode</th>
+              <th>Cloud Destination</th>
+              <th>Cadence</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong style="color: #38bdf8;">Node 1 (Tap Unit)</strong></td>
+              <td>0.2 MPa Piezoresistive Diaphragm + ADS1115 (16-bit)</td>
+              <td>Hydrostatic Head P / ρg</td>
+              <td>Non-Invasive Inline at Tap Outlet</td>
+              <td>Sheet 1: <code>Floor 1</code> (Cols B-F, K-L)</td>
+              <td><span style="color: #34d399; font-weight:600;">Every 1 min (:00)</span></td>
+            </tr>
+            <tr>
+              <td><strong style="color: #facc15;">Node 2 (Rooftop Unit)</strong></td>
+              <td>JSN-SR04T / HC-SR04 Waterproof Ultrasonic</td>
+              <td>Direct Water Air Gap H_water = H_depth - Δd</td>
+              <td>Overhead Storage Tank Top Ground Truth</td>
+              <td>Sheet 1: <code>Floor 1</code> (Cols G-H)</td>
+              <td><span style="color: #34d399; font-weight:600;">Every 1 min (:00)</span></td>
+            </tr>
+            <tr>
+              <td><strong style="color: #c084fc;">Event Burst Engine</strong></td>
+              <td>Synchronized Dual-Transducer (Tap + Rooftop)</td>
+              <td>Transient Pressure Drop &amp; Echo at 10 Hz</td>
+              <td>SPIFFS Buffer &rarr; Chunked HTTPS POST</td>
+              <td>Sheet 2: <code>HighRes_Event_Logs</code></td>
+              <td><span style="color: #f43f5e; font-weight:600;">10 Hz (every 100 ms)</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="btn-group" style="margin-top: 1rem;">
+        <button class="btn btn-primary" onclick="sendTriggerSheetsCmd()">
+          🚀 Trigger Immediate 1-Min Sync Log Now
+        </button>
+        <button class="btn btn-secondary" onclick="openSheetsInNewTab()">
+          📊 Open Live Google Sheet ↗
+        </button>
+      </div>
+    </div>
+
     <!-- High-Resolution Dual-Sensor Event Recorder (Sheet 2) -->
     <div class="card" style="border: 1px solid rgba(239, 68, 68, 0.4); box-shadow: 0 0 30px rgba(239, 68, 68, 0.12); margin-bottom: 1.5rem;">
       <div class="card-title">
@@ -944,6 +1167,120 @@
           <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12"/></svg>
           Stop &amp; Stream to Sheet 2
         </button>
+      </div>
+    </div>
+
+    <!-- Dual-Node Over-The-Air (OTA) Management Center -->
+    <div class="card" style="border: 1px solid rgba(168, 85, 247, 0.35); box-shadow: 0 0 30px rgba(168, 85, 247, 0.1); margin-bottom: 1.5rem;">
+      <div class="card-title">
+        <div style="display: flex; align-items: center; gap: 0.6rem;">
+          <span style="font-size: 1.2rem;">⚡</span>
+          <span style="color: #ffffff; font-weight: 700;">Dual-Node Over-The-Air (OTA) Management Center</span>
+        </div>
+        <div style="display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;">
+          <span style="font-size: 0.72rem; color: #c084fc; font-weight: 700; background: rgba(168,85,247,0.15); padding: 3px 8px; border-radius: 6px;">ARDUINO OTA (PORT 3232)</span>
+          <span style="font-size: 0.72rem; color: #38bdf8; font-weight: 700; background: rgba(56,189,248,0.15); padding: 3px 8px; border-radius: 6px;">15-MIN GITHUB AUTO-UPDATE</span>
+        </div>
+      </div>
+      <p class="note-text" style="margin-bottom: 1rem;">
+        Both Node 1 and Node 2 support two Over-The-Air firmware flashing mechanisms: direct local network flashing via <code>ota_flash_tool.py</code> on port 3232, and automated cloud polling from GitHub Releases <code>latest</code> every 15 minutes.
+      </p>
+
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1rem; margin-bottom: 1.25rem;">
+        <!-- Node 1 OTA Card -->
+        <div style="background: rgba(0,0,0,0.3); border: 1px solid var(--card-border); border-radius: 12px; padding: 1rem;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.6rem;">
+            <strong style="color: #38bdf8; font-size: 0.95rem;">Node 1: Tap Pressure Node</strong>
+            <span style="font-size: 0.72rem; color: #10b981; font-weight: 700; background: rgba(16,185,129,0.15); padding: 2px 7px; border-radius: 5px;">ONLINE</span>
+          </div>
+          <div style="font-family:'JetBrains Mono'; font-size: 0.76rem; color: #94a3b8; line-height: 1.7; margin-bottom: 0.75rem;">
+            <div>• Hostname: <span style="color:#f8fafc;">esp32-tap-pressure</span></div>
+            <div>• OTA Port: <span style="color:#f8fafc;">3232</span> | Password: <span style="color:#f8fafc;">admin123</span></div>
+            <div>• Firmware Binary: <span style="color:#38bdf8;">pressure_node_firmware.bin</span></div>
+            <div>• Installed Version: <span style="color:#34d399; font-weight:700;">v1.3.0</span></div>
+          </div>
+          <button class="btn" style="width: 100%; background: rgba(56, 189, 248, 0.15); border: 1px solid rgba(56, 189, 248, 0.4); color: #38bdf8; font-weight: 600;" onclick="sendUpdateFirmwareNow(1)">
+            ⚡ Flash Node 1 (Pressure) Now
+          </button>
+        </div>
+
+        <!-- Node 2 OTA Card -->
+        <div style="background: rgba(0,0,0,0.3); border: 1px solid var(--card-border); border-radius: 12px; padding: 1rem;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.6rem;">
+            <strong style="color: #facc15; font-size: 0.95rem;">Node 2: Overhead Ultrasonic Node</strong>
+            <span style="font-size: 0.72rem; color: #10b981; font-weight: 700; background: rgba(16,185,129,0.15); padding: 2px 7px; border-radius: 5px;">ONLINE</span>
+          </div>
+          <div style="font-family:'JetBrains Mono'; font-size: 0.76rem; color: #94a3b8; line-height: 1.7; margin-bottom: 0.75rem;">
+            <div>• Hostname: <span style="color:#f8fafc;">esp32-tank-ultrasonic</span></div>
+            <div>• OTA Port: <span style="color:#f8fafc;">3232</span> | Password: <span style="color:#f8fafc;">admin123</span></div>
+            <div>• Firmware Binary: <span style="color:#facc15;">ultrasonic_node_firmware.bin</span></div>
+            <div>• Installed Version: <span style="color:#34d399; font-weight:700;">v1.3.0</span></div>
+          </div>
+          <button class="btn" style="width: 100%; background: rgba(234, 179, 8, 0.15); border: 1px solid rgba(234, 179, 8, 0.4); color: #fde047; font-weight: 600;" onclick="sendUpdateFirmwareNow(2)">
+            ⚡ Flash Node 2 (Ultrasonic) Now
+          </button>
+        </div>
+      </div>
+
+      <div class="btn-group">
+        <button class="btn" style="background: linear-gradient(135deg, #9333ea, #c026d3); color: white; font-weight: 700; border: none; box-shadow: 0 4px 15px rgba(147, 51, 234, 0.35);" onclick="sendUpdateFirmwareNow(0)">
+          ⚡ Flash Both Nodes Concurrently
+        </button>
+        <button class="btn btn-secondary" onclick="sendCheckOtaCmd()">
+          🔍 Check GitHub Releases for New Binary
+        </button>
+      </div>
+    </div>
+
+    <!-- Physical Hydraulic Architecture & Theoretical Formulations -->
+    <div class="card" style="border: 1px solid rgba(56, 189, 248, 0.35); box-shadow: 0 0 30px rgba(56, 189, 248, 0.08); margin-bottom: 1.5rem;">
+      <div class="card-title">
+        <div style="display: flex; align-items: center; gap: 0.6rem;">
+          <span style="font-size: 1.2rem;">📐</span>
+          <span style="color: #ffffff; font-weight: 700;">Physical Hydraulic Architecture &amp; Estimation Algorithms</span>
+        </div>
+        <span style="font-size: 0.72rem; color: #38bdf8; font-weight: 700; background: rgba(56,189,248,0.15); padding: 3px 8px; border-radius: 6px;">DISSERTATION FORMULATIONS</span>
+      </div>
+      <p class="note-text" style="margin-bottom: 1rem;">
+        Mathematical principles and signal conditioning formulations governing non-invasive inline water level estimation.
+      </p>
+
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1rem;">
+        <div style="background: rgba(0,0,0,0.3); border: 1px solid var(--card-border); border-radius: 10px; padding: 1rem;">
+          <h4 style="color: #38bdf8; font-size: 0.9rem; margin-bottom: 0.5rem;">1. Static Hydrostatic Head Formulation</h4>
+          <div style="font-family:'JetBrains Mono'; font-size: 0.8rem; color: #e2e8f0; line-height: 1.8; background: rgba(0,0,0,0.4); padding: 8px 12px; border-radius: 6px; margin-bottom: 0.5rem;">
+            H_total = (P_static × 1000) / (ρ × g)<br>
+            H_level = H_total - h_elevation<br>
+            Level_% = (H_level / H_max) × 100%
+          </div>
+          <p style="font-size: 0.75rem; color: var(--text-muted); line-height: 1.4;">
+            Where ρ = 1000 kg/m³, g = 9.80665 m/s², h_elevation is the fixed vertical height from tap to tank base, and H_max is the tank usable depth (122 cm).
+          </p>
+        </div>
+
+        <div style="background: rgba(0,0,0,0.3); border: 1px solid var(--card-border); border-radius: 10px; padding: 1rem;">
+          <h4 style="color: #facc15; font-size: 0.9rem; margin-bottom: 0.5rem;">2. Overhead Ultrasonic Ground Truth Benchmark</h4>
+          <div style="font-family:'JetBrains Mono'; font-size: 0.8rem; color: #e2e8f0; line-height: 1.8; background: rgba(0,0,0,0.4); padding: 8px 12px; border-radius: 6px; margin-bottom: 0.5rem;">
+            H_water = H_depth - (Dist_measured - 6.0 cm)<br>
+            GT_Level_% = (H_water / H_depth) × 100%<br>
+            Error Δ = | Level_% - GT_Level_% |
+          </div>
+          <p style="font-size: 0.75rem; color: var(--text-muted); line-height: 1.4;">
+            Acoustic echo rangefinder with 6.0 cm full-tank offset calibration and 7-sample median filter for ripple suppression.
+          </p>
+        </div>
+
+        <div style="background: rgba(0,0,0,0.3); border: 1px solid var(--card-border); border-radius: 10px; padding: 1rem;">
+          <h4 style="color: #f43f5e; font-size: 0.9rem; margin-bottom: 0.5rem;">3. Dynamic Flow &amp; Joukowsky Hammer Suppression</h4>
+          <div style="font-family:'JetBrains Mono'; font-size: 0.8rem; color: #e2e8f0; line-height: 1.8; background: rgba(0,0,0,0.4); padding: 8px 12px; border-radius: 6px; margin-bottom: 0.5rem;">
+            Tap Open: dP/dt &lt; -1.5 kPa/s (or ΔP &gt; 3.0 kPa)<br>
+            Tap Close: dP/dt &gt; +1.2 kPa/s<br>
+            ΔP_surge = ρ · c · Δv  (Joukowsky Shockwave)
+          </div>
+          <p style="font-size: 0.75rem; color: var(--text-muted); line-height: 1.4;">
+            Freezes level at pre-flow baseline during discharge. Enforces a non-blocking 3000 ms settling delay to damp water hammer shockwaves before re-evaluating static equilibrium.
+          </p>
+        </div>
       </div>
     </div>
 
@@ -1174,7 +1511,7 @@
     // High-Precision Digital Oscilloscope Parameters
     const OSCILLOSCOPE_POINTS = 100; // 100-sample high-fidelity buffer
     let lastOscilloscopeUpdate = Date.now();
-    let targetPressure = 67.0;
+    let targetPressure = 0.0;
 
     // Initialize Chart.js with hardware-accelerated linear phosphor oscilloscope trace
     function initChart() {
@@ -1351,19 +1688,40 @@
         if (d.v !== undefined) document.getElementById('modalAdcVolt').innerText = d.v.toFixed(3);
       }
 
-      // Ultrasound Parameter Live Boxes
+      // Ultrasound Parameter Live Boxes & Dual-Node Ground Truth
+      const uLvlVal = (d.ul !== undefined) ? d.ul : ((d.u_l !== undefined) ? d.u_l : -1);
+      const uDistVal = (d.ud !== undefined) ? d.ud : ((d.u_d !== undefined) ? d.u_d : -1);
+
       const usLiveLevel = document.getElementById('usLiveLevel');
       const usLiveDist = document.getElementById('usLiveDist');
-      if (d.u_l !== undefined && d.u_l >= 0) {
-        usLiveLevel.innerText = d.u_l.toFixed(1);
+      const tableN1 = document.getElementById('tableNode1Level');
+      const tableN2 = document.getElementById('tableNode2Level');
+      const deltaEl = document.getElementById('liveDeltaPct');
+      const depthErrEl = document.getElementById('liveDepthErr');
+
+      if (tableN1) tableN1.innerText = pct.toFixed(1) + '%';
+
+      if (uLvlVal !== undefined && uLvlVal >= 0) {
+        if (usLiveLevel) usLiveLevel.innerText = uLvlVal.toFixed(1);
+        if (tableN2) tableN2.innerText = uLvlVal.toFixed(1) + '%';
+        const delta = Math.abs(pct - uLvlVal);
+        const depth = d.depth || 122.0;
+        const dErr = (delta / 100.0) * depth;
+        if (deltaEl) deltaEl.innerText = delta.toFixed(2) + '%';
+        if (depthErrEl) depthErrEl.innerText = dErr.toFixed(1) + ' cm';
       } else {
-        usLiveLevel.innerText = 'OFFLINE';
+        if (usLiveLevel) usLiveLevel.innerText = 'OFFLINE';
+        if (tableN2) tableN2.innerText = 'OFFLINE';
       }
-      if (d.u_d !== undefined && d.u_d >= 0) {
-        usLiveDist.innerText = d.u_d.toFixed(1);
+
+      if (uDistVal !== undefined && uDistVal >= 0) {
+        if (usLiveDist) usLiveDist.innerText = uDistVal.toFixed(1);
       } else {
-        usLiveDist.innerText = 'OFFLINE';
+        if (usLiveDist) usLiveDist.innerText = 'OFFLINE';
       }
+
+      // Update Scenario Display (1 = Dual Online, 2 = Gateway Relay, 3 = Offline Mesh)
+      updateScenarioDisplay(d.sc || 1);
 
       // Calibration baselines
       if (d.p_emp !== undefined) document.getElementById('valPEmpty').innerText = d.p_emp.toFixed(1);
@@ -1411,7 +1769,7 @@
       updateEventMonitor(d);
 
       // Direct Hardware Stream Oscilloscope Rendering (True 5 Hz stream / 10 Hz burst, zero synthetic lag)
-      if (d.p !== undefined && !isNaN(d.p) && d.p > 0) {
+      if (d.p !== undefined && !isNaN(d.p) && d.p >= 0) {
         lastOscilloscopeUpdate = Date.now();
         targetPressure = d.p;
         const pVal = parseFloat(d.p.toFixed(2));
@@ -1484,6 +1842,54 @@
         rooftopEl.style.color = '#94a3b8';
       }
     }
+
+    // Update Scenario Display (1 = Dual Online, 2 = Gateway Relay, 3 = Offline Mesh)
+    function updateScenarioDisplay(sc) {
+      const sc1 = document.getElementById('scCard1');
+      const sc2 = document.getElementById('scCard2');
+      const sc3 = document.getElementById('scCard3');
+      const scPill = document.getElementById('activeScenarioPill');
+      const scText = document.getElementById('scenarioText');
+      if (!sc1 || !sc2 || !sc3) return;
+
+      sc1.classList.remove('active-scenario');
+      sc2.classList.remove('active-scenario');
+      sc3.classList.remove('active-scenario');
+
+      if (sc === 2) {
+        sc2.classList.add('active-scenario');
+        if (scPill) {
+          scPill.innerText = 'SCENARIO 2: GATEWAY RELAY';
+          scPill.style.color = '#fbbf24';
+          scPill.style.background = 'rgba(245,158,11,0.15)';
+        }
+        if (scText) scText.innerText = 'SCENARIO 2: GATEWAY RELAY';
+      } else if (sc === 3) {
+        sc3.classList.add('active-scenario');
+        if (scPill) {
+          scPill.innerText = 'SCENARIO 3: OFFLINE MESH';
+          scPill.style.color = '#f87171';
+          scPill.style.background = 'rgba(239,68,68,0.15)';
+        }
+        if (scText) scText.innerText = 'SCENARIO 3: OFFLINE MESH';
+      } else {
+        sc1.classList.add('active-scenario');
+        if (scPill) {
+          scPill.innerText = 'SCENARIO 1: DUAL ONLINE';
+          scPill.style.color = '#34d399';
+          scPill.style.background = 'rgba(16,185,129,0.15)';
+        }
+        if (scText) scText.innerText = 'SCENARIO 1: DUAL ONLINE';
+      }
+    }
+
+    // Synchronized 1-minute countdown timer
+    setInterval(() => {
+      const now = new Date();
+      const s = 60 - now.getSeconds();
+      const el = document.getElementById('sheetsCountdown');
+      if (el) el.innerText = s + 's';
+    }, 1000);
 
     // Handle Status / Ack Messages from ESP32
     function handleStatusAck(d) {
@@ -1674,27 +2080,27 @@
           const lvl = (item.pressure_level !== undefined && item.pressure_level !== null) ? item.pressure_level : 0;
 
           const telemetryObj = {
-            p: item.pressure_kpa || 0,
+            p: (item.pressure_kpa !== undefined && item.pressure_kpa !== null) ? item.pressure_kpa : 0,
             l: lvl,
-            v: item.voltage || 0,
+            v: (item.voltage !== undefined && item.voltage !== null) ? item.voltage : 0,
             d: 0.0,
             s: item.state || 'STATIC',
             h: item.head_m || 0,
             vol: (lvl / 100.0) * cap,
             cap: cap,
             depth: depth,
-            adc: Math.round((item.voltage || 1.89) * (26666 / 5.0)),
+            adc: Math.round(((item.voltage !== undefined && item.voltage !== null) ? item.voltage : 0) * (26666 / 5.0)),
             u_l: (item.ultrasonic_level !== undefined && item.ultrasonic_level !== null) ? item.ultrasonic_level : -1,
             u_d: (item.ultrasonic_dist !== undefined && item.ultrasonic_dist !== null) ? item.ultrasonic_dist : -1,
-            p_emp: 61.4,
-            p_ful: 73.4,
+            p_emp: item.p_empty !== undefined ? item.p_empty : parseFloat(document.getElementById('inputEmptyKpa')?.value || 0),
+            p_ful: item.p_full !== undefined ? item.p_full : parseFloat(document.getElementById('inputFullKpa')?.value || 0),
             ver: '1.3.0'
           };
 
           handleLiveTelemetry(telemetryObj);
           activeDataSource = 'sheets';
           updateMqttBadge('online', 'CLOUD SYNC (' + (data.sheet || 'Floor 1') + ')');
-          if (telemetryObj.p > 0) {
+          if (telemetryObj.p >= 0) {
             targetPressure = telemetryObj.p;
           }
         }

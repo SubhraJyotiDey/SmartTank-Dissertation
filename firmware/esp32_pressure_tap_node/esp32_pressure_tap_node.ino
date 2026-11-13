@@ -18,6 +18,8 @@
  */
 
 #include <WiFi.h>
+#include <esp_now.h>
+#include <esp_wifi.h>
 #include <WebServer.h>
 #include <HTTPClient.h>
 #include <WiFiClientSecure.h>
@@ -27,6 +29,7 @@
 #include <time.h>
 #include <ArduinoOTA.h>
 #include "config.h"
+#include "cluster_protocol.h"
 #include "ads1115_driver.h"
 #include "web_dashboard.h"
 #include "cloud_ota_updater.h"
@@ -100,12 +103,32 @@ float peakHammerPressure = 0.0f; // Maximum Joukowsky shockwave peak (kPa)
 float hammerDeltaKPa = 0.0f;     // Overpressure surge above baseline (kPa)
 
 // =========================================================================
+// ESP-NOW MESH & SCENARIO-AWARE CLUSTER PROTOCOL
+// =========================================================================
+uint8_t broadcastMac[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
+uint8_t myMac[6]        = {0};
+bool espNowInitialized  = false;
+uint8_t lastKnownChannel = 1;
+
+// Node 2 (Rooftop Ultrasonic Ground Truth) Tracking
+float peerRoofDistanceCm  = 0.0f;
+float peerRoofLevelPct    = 0.0f;
+float peerRoofHeightCm    = 0.0f;
+int8_t peerRoofRssi       = -127;
+unsigned long lastRoofPacketTime = 0;
+bool peerRoofNeedsRelay   = false;
+uint8_t activeScenario    = 1; // 1 = Dual Online, 2 = Gateway Relay, 3 = Offline Mesh
+
+// =========================================================================
 // FUNCTION DECLARATIONS
 // =========================================================================
 void initWiFi();
 void maintainWiFi();
 void initOTA();
 void initNTP();
+void initEspNowCluster();
+void onClusterDataRecv(const uint8_t *mac_addr, const uint8_t *data, int data_len);
+bool sendUltrasonicProxyToGoogleSheets(const String& timestampStr, float distCm, float lvlPct);
 bool getResilientTime(struct tm* timeinfo);
 void loadSettings();
 void saveSettings();
@@ -131,6 +154,106 @@ void handleOtaCheckApi();
 void handleEventStartApi();
 void handleEventStopApi();
 void handleEventStatusApi();
+
+// MQTT Cloud Handlers
+void maintainMqtt();
+void publishMqttTelemetry();
+void publishMqttStatus(const String& msg);
+void onMqttMessageReceived(char* topic, byte* payload, unsigned int length);
+String getJsonField(const String& json, const String& key);
+
+// =========================================================================
+// ESP-NOW RECEIVE HANDLER & DUAL-RADIO SCENARIO COORDINATION
+// =========================================================================
+void onClusterDataRecv(const uint8_t *mac_addr, const uint8_t *data, int data_len) {
+  if (data_len < (int)sizeof(ClusterPacket)) return;
+  ClusterPacket pkt;
+  memcpy(&pkt, data, sizeof(ClusterPacket));
+  if (pkt.magic != CLUSTER_MAGIC) return;
+
+  if (pkt.senderId == NODE_ID_ROOF_ULTRASONIC) {
+    if (pkt.msgType == MSG_ROOF_TELEMETRY) {
+      peerRoofDistanceCm = pkt.payload.roofTelemetry.distanceCm;
+      peerRoofLevelPct = pkt.payload.roofTelemetry.waterLevelPct;
+      peerRoofHeightCm = pkt.payload.roofTelemetry.waterHeightCm;
+      peerRoofRssi = pkt.wifiRssi;
+      lastRoofPacketTime = millis();
+
+      // Feed high-res 10 Hz event recorder with synchronized ground truth
+      eventRecorder.updateRooftopGroundTruth(peerRoofDistanceCm, peerRoofLevelPct);
+
+      // Determine Scenario:
+      if (WiFi.status() == WL_CONNECTED) {
+        if (peerRoofRssi <= -100) {
+          activeScenario = 2; // Scenario 2: Node 1 acts as Gateway Relay for Node 2
+          peerRoofNeedsRelay = true;
+        } else {
+          activeScenario = 1; // Scenario 1: Dual Online (Both Node 1 and Node 2 on Wi-Fi STA)
+          peerRoofNeedsRelay = false;
+        }
+      } else {
+        activeScenario = 3; // Scenario 3: Complete Wi-Fi Outage (Offline Mesh & Flash Queue)
+      }
+    } else if (pkt.msgType == MSG_ROOF_OVERFLOW_STOP) {
+      Serial.println(F("[SAFETY] 🚨 High-water overflow cutoff alert received from Node 2!"));
+    }
+  }
+}
+
+void initEspNowCluster() {
+  WiFi.macAddress(myMac);
+  if (esp_now_init() != ESP_OK) {
+    Serial.println(F("[ESP-NOW] Init Failed on Node 1!"));
+    return;
+  }
+  espNowInitialized = true;
+  esp_now_register_recv_cb(esp_now_recv_cb_t(onClusterDataRecv));
+
+  // Add Broadcast Peer on active channel
+  esp_now_peer_info_t bcastPeer = {};
+  memcpy(bcastPeer.peer_addr, broadcastMac, 6);
+  bcastPeer.channel = (WiFi.status() == WL_CONNECTED) ? WiFi.channel() : lastKnownChannel;
+  bcastPeer.encrypt = false;
+  if (esp_now_is_peer_exist(broadcastMac)) esp_now_del_peer(broadcastMac);
+  esp_now_add_peer(&bcastPeer);
+  Serial.printf("[ESP-NOW] Node 1 Cluster initialized on Channel %d. Broadcast peer added.\n", bcastPeer.channel);
+}
+
+bool sendUltrasonicProxyToGoogleSheets(const String& timestampStr, float distCm, float lvlPct) {
+  if (WiFi.status() != WL_CONNECTED) return false;
+
+  WiFiClientSecure client;
+  client.setInsecure();
+  HTTPClient http;
+  http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
+  http.setTimeout(15000);
+
+  String encodedTimestamp = timestampStr;
+  encodedTimestamp.replace(" ", "%20");
+
+  String url = googleScriptUrl;
+  url.trim();
+  url += (url.indexOf('?') >= 0) ? "&" : "?";
+  url += "node=ultrasonic";
+  url += "&timestamp=" + encodedTimestamp;
+  url += "&distance_cm=" + String(distCm, 1);
+  url += "&level_pct=" + String(lvlPct, 1);
+  url += "&tank_depth_cm=" + String(tankDepthCm, 1);
+  url += "&relayed_by=node1";
+
+  Serial.printf("[GATEWAY-RELAY] 🛰️ (Scenario 2) Relaying Node 2 Ground Truth to Google Sheets...\n");
+  bool ok = false;
+  if (http.begin(client, url)) {
+    int code = http.GET();
+    if (code > 0) {
+      ok = (code == 200 || code == 302);
+      Serial.printf("[GATEWAY-RELAY] Result: %d\n", code);
+    }
+    http.end();
+  }
+  client.stop();
+  return ok;
+}
 
 // =========================================================================
 // SETUP
@@ -187,6 +310,9 @@ void setup() {
   // Configure NTP time
   initNTP();
 
+  // Initialize ESP-NOW Mesh & Scenario Coordination
+  initEspNowCluster();
+
   // Initialize Web Server routes
   server.on("/", HTTP_GET, handleRoot);
   server.on("/api/status", HTTP_GET, handleStatusApi);
@@ -197,11 +323,15 @@ void setup() {
   server.on("/api/event/start", HTTP_POST, handleEventStartApi);
   server.on("/api/event/stop", HTTP_POST, handleEventStopApi);
   server.on("/api/event/status", HTTP_GET, handleEventStatusApi);
+  server.enableCORS(true);
   server.begin();
   Serial.println(F("[HTTP] Embedded Web Server started on port 80"));
 
-  // Initialize MQTT Client
+  // Initialize MQTT Client with Cloud Command Listener & Buffer Size
   mqttClient.setServer(MQTT_BROKER, MQTT_PORT);
+  mqttClient.setCallback(onMqttMessageReceived);
+  mqttClient.setBufferSize(512);
+  mqttClient.setSocketTimeout(1);
 
   // Initial sensor warm-up read
   for (int i = 0; i < 20; i++) {
@@ -212,16 +342,19 @@ void setup() {
   prevPressure = filteredPressure;
 }
 
-// Ensure MQTT connection without blocking loop
+// Ensure MQTT connection and auto-subscribe to Cloud Command Topic
 void maintainMqtt() {
   if (WiFi.status() != WL_CONNECTED) return;
   if (!mqttClient.connected()) {
     static unsigned long lastReconnectAttempt = 0;
-    if (millis() - lastReconnectAttempt > 5000) {
+    if (millis() - lastReconnectAttempt > 8000) {
       lastReconnectAttempt = millis();
       String clientId = "ESP32Tap-" + String((uint32_t)ESP.getEfuseMac(), HEX);
       if (mqttClient.connect(clientId.c_str())) {
-        Serial.println(F("[MQTT] Connected to HiveMQ Broker!"));
+        Serial.println(F("[MQTT] ✅ Connected to HiveMQ Broker!"));
+        mqttClient.subscribe(MQTT_TOPIC_COMMAND);
+        Serial.printf("[MQTT] 🛰️ Subscribed to Cloud Command Topic: %s\n", MQTT_TOPIC_COMMAND);
+        publishMqttStatus("ESP32 Online & Ready (v1.2.1)");
       }
     }
   } else {
@@ -229,19 +362,108 @@ void maintainMqtt() {
   }
 }
 
-// Publish 10 Hz Real-Time Telemetry to Global MQTT Broker
+// Helper: extract simple key-value from JSON string (zero-dependency)
+String getJsonField(const String& json, const String& key) {
+  String search = "\"" + key + "\":";
+  int idx = json.indexOf(search);
+  if (idx == -1) {
+    search = "\"" + key + "\" :";
+    idx = json.indexOf(search);
+  }
+  if (idx == -1) return "";
+  int valStart = idx + search.length();
+  while (valStart < json.length() && (json[valStart] == ' ' || json[valStart] == '\"')) valStart++;
+  int valEnd = valStart;
+  while (valEnd < json.length() && json[valEnd] != ',' && json[valEnd] != '}' && json[valEnd] != '\"') valEnd++;
+  return json.substring(valStart, valEnd);
+}
+
+// Publish Status / Ack to Cloud Web Dashboard
+void publishMqttStatus(const String& msg) {
+  if (!mqttClient.connected()) return;
+  String payload = "{\"msg\":\"" + msg + "\",\"p\":" + String(filteredPressure, 2) + ",\"l\":" + String(waterLevelPct, 1) + "}";
+  mqttClient.publish(MQTT_TOPIC_STATUS, payload.c_str());
+}
+
+void onMqttMessageReceived(char* topic, byte* payload, unsigned int length) {
+  char msgBuf[512];
+  if (length >= sizeof(msgBuf)) length = sizeof(msgBuf) - 1;
+  memcpy(msgBuf, payload, length);
+  msgBuf[length] = '\0';
+  String json = String(msgBuf);
+
+  Serial.printf("[MQTT] Command received on %s: %s\n", topic, msgBuf);
+  String cmd = getJsonField(json, "cmd");
+
+  if (cmd == "start_event") {
+    String name = getJsonField(json, "name");
+    if (name.length() == 0) name = "Cloud Event";
+    float durationSec = getJsonField(json, "duration").toFloat();
+    if (durationSec <= 0.0f) durationSec = 30.0f;
+    int colorIdx = getJsonField(json, "color").toInt();
+
+    bool ok = eventRecorder.startEvent(name, durationSec, colorIdx);
+    if (ok) {
+      publishMqttStatus("High-res 10 Hz recording started: " + name);
+    } else {
+      publishMqttStatus("Event recording busy or already active");
+    }
+  } else if (cmd == "stop_event") {
+    bool ok = eventRecorder.stopEvent();
+    if (ok) {
+      publishMqttStatus("Event stopped. Uploading samples to Sheet 2...");
+    } else {
+      publishMqttStatus("No active event to stop");
+    }
+  } else if (cmd == "cal_empty") {
+    pEmptyKPa = filteredPressure;
+    saveSettings();
+    publishMqttStatus("Calibrated Empty Baseline: " + String(pEmptyKPa, 2) + " kPa");
+  } else if (cmd == "cal_full") {
+    pFullKPa = filteredPressure;
+    saveSettings();
+    publishMqttStatus("Calibrated Full Baseline: " + String(pFullKPa, 2) + " kPa");
+  } else if (cmd == "manual_cal") {
+    float emp = getJsonField(json, "p_empty").toFloat();
+    float ful = getJsonField(json, "p_full").toFloat();
+    if (ful > emp && emp > 0) {
+      pEmptyKPa = emp;
+      pFullKPa = ful;
+      saveSettings();
+      publishMqttStatus("Manual calibration saved: Empty=" + String(pEmptyKPa, 1) + ", Full=" + String(pFullKPa, 1));
+    }
+  } else if (cmd == "save_settings") {
+    if (json.indexOf("\"depth\"") != -1) tankDepthCm = getJsonField(json, "depth").toFloat();
+    if (json.indexOf("\"cap\"") != -1) tankCapacityL = getJsonField(json, "cap").toFloat();
+    String newUrl = getJsonField(json, "url");
+    if (newUrl.length() > 5) googleScriptUrl = newUrl;
+    saveSettings();
+    publishMqttStatus("Settings saved to ESP32 Flash");
+  } else if (cmd == "log_sheets") {
+    publishMqttStatus("Triggering immediate Google Sheets log...");
+    String ts = getCurrentTimeString();
+    sendToGoogleSheets(ts);
+  } else if (cmd == "check_ota") {
+    publishMqttStatus("Checking GitHub for firmware updates...");
+    cloudOTA.checkAndUpdate(true);
+  }
+}
+
+// Publish Real-Time Telemetry to Global MQTT Broker (5 Hz default / 10 Hz event)
 void publishMqttTelemetry() {
   if (!mqttClient.connected()) return;
 
-  char payload[128];
+  char payload[160];
   const char* st = (tapState == STATE_TAP_OPEN) ? "TAP_OPEN" :
                    (tapState == STATE_SETTLING) ? "SETTLING" : "STATIC";
 
-  // Compact JSON payload sent at 10 Hz:
-  // p: Pressure (kPa), l: Level (%), v: Voltage (V), d: dP/dt, s: State
+  // Compact JSON payload:
+  // p: Pressure (kPa), l: Level (%), v: Voltage (V), d: dP/dt, s: State,
+  // ud: Ultrasound Ground Truth Distance (cm), ul: Level (%), sc: Scenario (1=Dual, 2=Relay, 3=Offline)
   snprintf(payload, sizeof(payload),
-           "{\"p\":%.2f,\"l\":%.1f,\"v\":%.3f,\"d\":%.2f,\"s\":\"%s\"}",
-           filteredPressure, waterLevelPct, sensorVoltage, dPdt, st);
+           "{\"p\":%.2f,\"l\":%.1f,\"v\":%.3f,\"d\":%.2f,\"s\":\"%s\",\"ud\":%.1f,\"ul\":%.1f,\"sc\":%u}",
+           filteredPressure, waterLevelPct, sensorVoltage, dPdt, st,
+           peerRoofDistanceCm, peerRoofLevelPct, activeScenario);
 
   mqttClient.publish(MQTT_TOPIC_TELEMETRY, payload);
 }
@@ -267,20 +489,25 @@ void loop() {
 
   unsigned long currentMillis = millis();
 
-  // Sample sensor and update dynamic state machine at 10 Hz (every 100 ms)
-  if (currentMillis - lastSampleTime >= 100) {
+  // Sampling & Telemetry interval:
+  // Default is 5 Hz (200 ms). When High-Res Event is actively recording, switches to 10 Hz (100 ms)!
+  unsigned long sampleInterval = eventRecorder.isRecording() ? 100 : 200;
+
+  if (currentMillis - lastSampleTime >= sampleInterval) {
     float dt = (currentMillis - lastSampleTime) / 1000.0f;
     lastSampleTime = currentMillis;
 
     sampleSensors();
     updateFlowStateMachine();
     calculateWaterLevel();
-    publishMqttTelemetry(); // Broadcast 10 Hz stream to global cloud
+    publishMqttTelemetry(); // Broadcast 5 Hz default / 10 Hz burst stream to global cloud
 
     // High-Resolution Event Capture at 10 Hz (100 ms precision)
-    const char* stStr = (tapState == STATE_TAP_OPEN) ? "TAP_OPEN" :
-                        (tapState == STATE_SETTLING) ? "SETTLING" : "STATIC";
-    eventRecorder.captureSample(sensorVoltage, filteredPressure, dPdt, stStr, waterLevelPct, flowRateLps, totalDischargedLiters);
+    if (eventRecorder.isRecording()) {
+      const char* stStr = (tapState == STATE_TAP_OPEN) ? "TAP_OPEN" :
+                          (tapState == STATE_SETTLING) ? "SETTLING" : "STATIC";
+      eventRecorder.captureSample(sensorVoltage, filteredPressure, dPdt, stStr, waterLevelPct, flowRateLps, totalDischargedLiters);
+    }
   }
 
   // Check NTP clock and synchronized 10-minute Google Sheets logging
@@ -659,6 +886,11 @@ void handleNtpAndLogging() {
       bool sent = false;
       if (WiFi.status() == WL_CONNECTED) {
         sent = sendToGoogleSheets(timestampStr);
+
+        // Scenario 2: Relay Node 2 Ground Truth to Google Sheets if Node 2 has no Wi-Fi
+        if (peerRoofNeedsRelay && (millis() - lastRoofPacketTime < 15000)) {
+          sendUltrasonicProxyToGoogleSheets(timestampStr, peerRoofDistanceCm, peerRoofLevelPct);
+        }
       }
 
       if (!sent) {
@@ -800,12 +1032,24 @@ void maintainWiFi() {
   lastCheck = now;
 
   if (WiFi.status() == WL_CONNECTED) {
+    lastKnownChannel = WiFi.channel();
     if (!wasConnected) {
       wasConnected = true;
       disconnectStart = 0;
-      Serial.printf("\n[WIFI] Wi-Fi Restored! IP: %s | RSSI: %d dBm\n",
-                    WiFi.localIP().toString().c_str(), WiFi.RSSI());
+      Serial.printf("\n[WIFI] Wi-Fi Restored! IP: %s | RSSI: %d dBm | Channel: %d\n",
+                    WiFi.localIP().toString().c_str(), WiFi.RSSI(), lastKnownChannel);
       configTime(GMT_OFFSET_SEC, DAYLIGHT_OFFSET_SEC, NTP_SERVER); // Resync NTP
+
+      // Update ESP-NOW broadcast peer channel
+      if (espNowInitialized) {
+        esp_now_peer_info_t bcastPeer = {};
+        memcpy(bcastPeer.peer_addr, broadcastMac, 6);
+        bcastPeer.channel = lastKnownChannel;
+        bcastPeer.encrypt = false;
+        if (esp_now_is_peer_exist(broadcastMac)) esp_now_del_peer(broadcastMac);
+        esp_now_add_peer(&bcastPeer);
+      }
+
       uploadBufferedOfflineLogs(); // Immediately drain offline backlog!
     }
     return;
@@ -815,7 +1059,13 @@ void maintainWiFi() {
   if (wasConnected) {
     wasConnected = false;
     disconnectStart = now;
+    activeScenario = 3;
     Serial.println(F("\n[WIFI] WARNING: Wi-Fi dropped! Storing telemetry in Flash memory..."));
+  }
+
+  // Keep ESP-NOW locked to last known channel even while disconnected
+  if (lastKnownChannel > 0 && lastKnownChannel <= 14) {
+    esp_wifi_set_channel(lastKnownChannel, WIFI_SECOND_CHAN_NONE);
   }
 
   unsigned long offlineSec = (disconnectStart > 0) ? ((now - disconnectStart) / 1000) : 0;
@@ -927,6 +1177,18 @@ void handleStatusApi() {
   json += "\"wifi_connected\":" + String((WiFi.status() == WL_CONNECTED) ? "true" : "false") + ",";
   json += "\"adc_mode\":\"" + String(usingExternalAdc ? "ADS1115 (16-bit)" : "ESP32 Internal (12-bit)") + "\",";
   json += "\"ota_status\":\"" + cloudOTA.getStatus() + "\",";
+  json += "\"event_recording\":" + String(eventRecorder.isRecording() ? "true" : "false") + ",";
+  json += "\"event_uploading\":" + String(eventRecorder.isUploading() ? "true" : "false") + ",";
+  json += "\"event_name\":\"" + eventRecorder.getEventName() + "\",";
+  json += "\"event_elapsed\":" + String(eventRecorder.getElapsedSec(), 1) + ",";
+  json += "\"event_duration\":" + String(eventRecorder.getDurationSec(), 1) + ",";
+  json += "\"event_samples\":" + String(eventRecorder.getSamplesCount()) + ",";
+  json += "\"event_upload_pct\":" + String(eventRecorder.getUploadProgressPct()) + ",";
+  json += "\"scenario\":" + String(activeScenario) + ",";
+  json += "\"roof_distance\":" + String(peerRoofDistanceCm, 1) + ",";
+  json += "\"roof_level\":" + String(peerRoofLevelPct, 1) + ",";
+  json += "\"roof_rssi\":" + String(peerRoofRssi) + ",";
+  json += "\"roof_age_ms\":" + String((lastRoofPacketTime > 0) ? (millis() - lastRoofPacketTime) : 999999) + ",";
   json += "\"firmware_version\":\"" + String(FIRMWARE_VERSION) + "\"";
   json += "}";
 

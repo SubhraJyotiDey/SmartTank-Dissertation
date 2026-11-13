@@ -9,6 +9,7 @@ Supports both Arduino Core 2.x (MD5) and Arduino Core 3.x (PBKDF2-HMAC-SHA256)
 import sys
 import os
 import socket
+import select
 import hashlib
 import time
 import urllib.request
@@ -18,7 +19,7 @@ FLASH_CMD = 0
 SPIFFS_CMD = 100
 AUTH_CMD  = 200
 
-def flash_esp32_ota(esp_ip, bin_path, password="admin123", host_ip="192.168.29.114", esp_port=3232):
+def flash_esp32_ota(esp_ip, bin_path, password="admin123", host_ip="0.0.0.0", esp_port=3232):
     if not os.path.exists(bin_path):
         print(f"[ERROR] Firmware binary not found: {bin_path}")
         return False
@@ -40,7 +41,7 @@ def flash_esp32_ota(esp_ip, bin_path, password="admin123", host_ip="192.168.29.1
     # Create TCP server to receive connection from ESP32
     tcp_server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     tcp_server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    tcp_server.bind((host_ip, 0))
+    tcp_server.bind(("0.0.0.0", 0))
     local_port = tcp_server.getsockname()[1]
     tcp_server.listen(1)
     tcp_server.settimeout(20.0)
@@ -50,7 +51,13 @@ def flash_esp32_ota(esp_ip, bin_path, password="admin123", host_ip="192.168.29.1
 
     # Step 1: Send invitation via UDP
     udp_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    udp_sock.bind((host_ip, 0)) # Explicitly bind to host IP to avoid Windows routing issues
+    try:
+        if host_ip and host_ip != "0.0.0.0":
+            udp_sock.bind((host_ip, 0))
+        else:
+            udp_sock.bind(("0.0.0.0", 0))
+    except Exception:
+        udp_sock.bind(("0.0.0.0", 0))
     udp_sock.settimeout(6.0) # PBKDF2 10k iterations takes ~3-4s on ESP32!
 
     invite_msg = f"{FLASH_CMD} {local_port} {content_size} {file_md5}\n"
@@ -147,21 +154,24 @@ def flash_esp32_ota(esp_ip, bin_path, password="admin123", host_ip="192.168.29.1
     last_res_ok = False
 
     try:
+        conn.settimeout(10.0)
         while total_sent < content_size:
             chunk = content[total_sent : total_sent + chunk_size]
             conn.sendall(chunk)
             total_sent += len(chunk)
 
-            # Read ESP32 write acknowledgement (written byte count string or "OK")
-            ack = conn.recv(32)
-            if not ack:
-                raise RuntimeError("ESP32 closed connection unexpectedly during flash write")
-            if b"OK" in ack:
-                last_res_ok = True
+            # Drain any echoed bytes from ESP32 non-blockingly so socket buffers don't overflow
+            r, _, _ = select.select([conn], [], [], 0.001)
+            if r:
+                try:
+                    ack = conn.recv(1024)
+                    if ack and b"OK" in ack:
+                        last_res_ok = True
+                except Exception:
+                    pass
 
-            # Crucial: Yield 4ms so ESP32 client.available() drops to 0, triggering delay(1)
-            # which yields to FreeRTOS IDLE task to feed Task Watchdog (TWDT) and prevent crash!
-            time.sleep(0.004)
+            # Pacing delay: 20 ms gives ~70 KB/s, perfectly matching ESP32 SPI flash page write rate!
+            time.sleep(0.020)
 
             # Progress bar
             pct = (total_sent / content_size) * 100.0
@@ -241,6 +251,13 @@ def verify_node_online(esp_ip, expected_version="1.2.8", max_wait_sec=30):
     return False
 
 if __name__ == "__main__":
+    if len(sys.argv) > 1 and sys.argv[1] in ("-h", "--help"):
+        print("Usage:")
+        print("  python ota_flash_tool.py 1               # Flash Node 1 (Tap Pressure Node)")
+        print("  python ota_flash_tool.py 2               # Flash Node 2 (Ultrasonic Tank Node)")
+        print("  python ota_flash_tool.py <IP> <BIN_PATH> # Flash Custom Target IP")
+        sys.exit(0)
+
     target = sys.argv[1] if len(sys.argv) > 1 else "1"
     
     if target in ("1", "pressure", "192.168.29.125"):
@@ -256,11 +273,24 @@ if __name__ == "__main__":
         bin_path = sys.argv[2] if len(sys.argv) > 2 else r"A:\Dissertation\code\pressure_node_firmware.bin"
         node_name = f"Custom Target ({esp_ip})"
 
+    local_ip = "0.0.0.0"
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect((esp_ip, 80))
+        local_ip = s.getsockname()[0]
+        s.close()
+    except Exception:
+        try:
+            local_ip = socket.gethostbyname(socket.gethostname())
+        except Exception:
+            local_ip = "0.0.0.0"
+
     print(f"\n>>> Starting OTA Flash for {node_name} at {esp_ip} <<<")
-    ok = flash_esp32_ota(esp_ip, bin_path, password="admin123", host_ip="192.168.29.114")
+    ok = flash_esp32_ota(esp_ip, bin_path, password="admin123", host_ip=local_ip)
     
     if ok:
-        verify_node_online(esp_ip, expected_version="1.2.8", max_wait_sec=35)
+        expected_ver = "1.3.0"
+        verify_node_online(esp_ip, expected_version=expected_ver, max_wait_sec=35)
     else:
         print("[FAIL] OTA flashing process failed.")
         sys.exit(1)

@@ -1,14 +1,14 @@
 {
-  "firmware_version": "1.2.1",
-  "published_at": "2026-10-28T10:15:00Z",
+  "firmware_version": "1.3.0",
+  "published_at": "2026-11-13T19:30:00Z",
   "pressure_node": {
-    "version": "1.2.1",
+    "version": "1.3.0",
     "filename": "pressure_node_firmware.bin",
-    "description": "Pressure Tap Node with direct 1:1 hardware ADC sampling (digital software filters, oversampling, and deadband removed)."
+    "description": "Pressure Tap Node v1.3.0: 1-min Google Sheets sync, 10Hz burst event logging, 5Hz MQTT live oscilloscope telemetry, Scenario-aware ESP-NOW & WiFi gateway relay, Dual OTA (ArduinoOTA + Cloud OTA)."
   },
   "ultrasonic_node": {
-    "version": "1.2.0",
+    "version": "1.3.0",
     "filename": "ultrasonic_node_firmware.bin",
-    "description": "Ultrasonic Node with local /api/reading server and 15-minute Auto-OTA."
+    "description": "Ultrasonic Ground Truth Node v1.3.0: 1-min synchronized Google Sheets logging, continuous ESP-NOW ground truth broadcast, fail-safe overflow cutoff, local HTTP API, and Dual OTA."
   }
 }

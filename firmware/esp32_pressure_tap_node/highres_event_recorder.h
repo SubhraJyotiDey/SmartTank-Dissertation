@@ -71,6 +71,11 @@ private:
 public:
     HighResEventRecorder() {}
 
+    void updateRooftopGroundTruth(float distCm, float levelPct) {
+        if (distCm > 0.0f && distCm < 500.0f) cachedRooftopDist = distCm;
+        if (levelPct >= 0.0f && levelPct <= 100.0f) cachedRooftopLevel = levelPct;
+    }
+
     bool isRecording() const { return recordingActive; }
     bool isUploading() const { return uploadingActive; }
     String getEventName() const { return eventName; }
@@ -163,8 +168,8 @@ public:
         }
     }
 
-    void stopEvent() {
-        if (!recordingActive) return;
+    bool stopEvent() {
+        if (!recordingActive) return false;
 
         recordingActive = false;
         if (writeBuffer) {
@@ -188,6 +193,7 @@ public:
         } else {
             uploadStatusText = "No samples captured";
         }
+        return true;
     }
 
     // Runs in loop(): uploads 1 chunk of 50 samples every 1.2s to prevent Google rate limits

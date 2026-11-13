@@ -18,6 +18,8 @@
  */
 
 #include <WiFi.h>
+#include <esp_now.h>
+#include <esp_wifi.h>
 #include <HTTPClient.h>
 #include <WiFiClientSecure.h>
 #include <SPIFFS.h>
@@ -26,6 +28,7 @@
 #include <WebServer.h>
 #include "config.h"
 #include "cloud_ota_updater.h"
+#include "cluster_protocol.h"
 
 // WebServer for local high-speed telemetry query by Pressure Node
 WebServer server(80);
@@ -45,6 +48,13 @@ float waterLevelPct      = 0.0f;
 
 unsigned long lastSampleTime    = 0;
 unsigned long lastLogSlotMinute = 999;
+
+// ESP-NOW Mesh Protocol State
+uint8_t broadcastMac[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
+uint8_t myMac[6]        = {0};
+uint16_t roofSeq        = 1;
+bool espNowReady        = false;
+uint8_t lastKnownChannel = 1;
 
 // Persistent Offline Queue in Flash SPIFFS
 const char* OFFLINE_QUEUE_FILE = "/offline_ultrasonic.csv";
@@ -93,6 +103,21 @@ void setup() {
   initWiFi();
   initOTA();
   initNTP();
+
+  // ESP-NOW Mesh Protocol Init
+  WiFi.macAddress(myMac);
+  if (WiFi.status() == WL_CONNECTED) lastKnownChannel = WiFi.channel();
+  if (esp_now_init() == ESP_OK) {
+    espNowReady = true;
+    esp_now_peer_info_t bcast = {};
+    memcpy(bcast.peer_addr, broadcastMac, 6);
+    bcast.channel = (WiFi.status() == WL_CONNECTED) ? WiFi.channel() : lastKnownChannel;
+    bcast.encrypt = false;
+    esp_now_add_peer(&bcast);
+    Serial.printf("[ESP-NOW] Ultrasonic Node initialized on Channel %d. Broadcast peer added.\n", bcast.channel);
+  } else {
+    Serial.println(F("[ESP-NOW] Failed to initialize ESP-NOW on Node 2!"));
+  }
 
   // Local API for Node 1 to fetch live ultrasonic ground truth during high-res events
   server.on("/api/reading", HTTP_GET, []() {
@@ -209,6 +234,36 @@ void calculateGroundTruth() {
 
     Serial.printf("[ULTRASONIC] Dist: %.1f cm | Height: %.1f cm | Ground Truth Level: %.1f%%\n",
                   measuredDistanceCm, waterHeightCm, waterLevelPct);
+
+    // Broadcast Ground Truth over ESP-NOW to Node 1
+    if (espNowReady) {
+      ClusterPacket pkt;
+      memset(&pkt, 0, sizeof(ClusterPacket));
+      pkt.magic = CLUSTER_MAGIC;
+      pkt.senderId = NODE_ID_ROOF_ULTRASONIC;
+      pkt.msgType = MSG_ROOF_TELEMETRY;
+      pkt.seqNumber = roofSeq++;
+      pkt.wifiChannel = (WiFi.status() == WL_CONNECTED) ? WiFi.channel() : lastKnownChannel;
+      pkt.wifiRssi = (WiFi.status() == WL_CONNECTED) ? (int8_t)WiFi.RSSI() : -127;
+      memcpy(pkt.senderMac, myMac, 6);
+      pkt.payload.roofTelemetry.distanceCm = measuredDistanceCm;
+      pkt.payload.roofTelemetry.waterLevelPct = waterLevelPct;
+      pkt.payload.roofTelemetry.waterHeightCm = waterHeightCm;
+      esp_now_send(broadcastMac, (uint8_t*)&pkt, sizeof(pkt));
+
+      // Direct Fail-Safe Overflow Cutoff: If tank level >= 98% or distance <= 8cm, broadcast overflow alert!
+      if (waterLevelPct >= 98.0f || (measuredDistanceCm > 0.0f && measuredDistanceCm <= 8.0f)) {
+        ClusterPacket stopPkt;
+        memset(&stopPkt, 0, sizeof(ClusterPacket));
+        stopPkt.magic = CLUSTER_MAGIC;
+        stopPkt.senderId = NODE_ID_ROOF_ULTRASONIC;
+        stopPkt.msgType = MSG_ROOF_OVERFLOW_STOP;
+        stopPkt.seqNumber = roofSeq++;
+        memcpy(stopPkt.senderMac, myMac, 6);
+        esp_now_send(broadcastMac, (uint8_t*)&stopPkt, sizeof(stopPkt));
+        Serial.println(F("[SAFETY] 🚨 Emergency Overflow Cutoff Sent via ESP-NOW!"));
+      }
+    }
   } else {
     Serial.println(F("[ULTRASONIC] Sensor read timeout/echo missed!"));
   }
@@ -409,6 +464,24 @@ void handleNtpAndLogging() {
       bool sent = false;
       if (WiFi.status() == WL_CONNECTED) {
         sent = sendToGoogleSheets(timestampStr);
+      } else {
+        Serial.println(F("[SYNC] Wi-Fi offline (Scenario 2/3). Signaling Gateway Node 1 over ESP-NOW..."));
+        // Transmit priority ground truth packet via ESP-NOW with RSSI -127 so Node 1 relays to Google Sheets!
+        if (espNowReady) {
+          ClusterPacket relayPkt;
+          memset(&relayPkt, 0, sizeof(ClusterPacket));
+          relayPkt.magic = CLUSTER_MAGIC;
+          relayPkt.senderId = NODE_ID_ROOF_ULTRASONIC;
+          relayPkt.msgType = MSG_ROOF_TELEMETRY;
+          relayPkt.seqNumber = roofSeq++;
+          relayPkt.wifiChannel = lastKnownChannel;
+          relayPkt.wifiRssi = -127; // Signals Node 1 to relay
+          memcpy(relayPkt.senderMac, myMac, 6);
+          relayPkt.payload.roofTelemetry.distanceCm = measuredDistanceCm;
+          relayPkt.payload.roofTelemetry.waterLevelPct = waterLevelPct;
+          relayPkt.payload.roofTelemetry.waterHeightCm = waterHeightCm;
+          esp_now_send(broadcastMac, (uint8_t*)&relayPkt, sizeof(relayPkt));
+        }
       }
 
       if (!sent) {
@@ -509,11 +582,12 @@ void maintainWiFi() {
   lastCheck = now;
 
   if (WiFi.status() == WL_CONNECTED) {
+    lastKnownChannel = WiFi.channel();
     if (!wasConnected) {
       wasConnected = true;
       disconnectStart = 0;
-      Serial.printf("\n[WIFI] Wi-Fi Restored! IP: %s | RSSI: %d dBm\n",
-                    WiFi.localIP().toString().c_str(), WiFi.RSSI());
+      Serial.printf("\n[WIFI] Wi-Fi Restored! IP: %s | RSSI: %d dBm | Channel: %d\n",
+                    WiFi.localIP().toString().c_str(), WiFi.RSSI(), lastKnownChannel);
       configTime(GMT_OFFSET_SEC, DAYLIGHT_OFFSET_SEC, NTP_SERVER); // Resync NTP
       uploadBufferedOfflineLogs(); // Immediately drain offline backlog!
     }
@@ -525,6 +599,11 @@ void maintainWiFi() {
     wasConnected = false;
     disconnectStart = now;
     Serial.println(F("\n[WIFI] WARNING: Wi-Fi dropped! Storing ground truth in Flash memory..."));
+  }
+
+  // Keep ESP-NOW locked to last known channel even while disconnected
+  if (lastKnownChannel > 0 && lastKnownChannel <= 14) {
+    esp_wifi_set_channel(lastKnownChannel, WIFI_SECOND_CHAN_NONE);
   }
 
   unsigned long offlineSec = (disconnectStart > 0) ? ((now - disconnectStart) / 1000) : 0;
