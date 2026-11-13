@@ -289,7 +289,7 @@ if __name__ == "__main__":
     ok = flash_esp32_ota(esp_ip, bin_path, password="admin123", host_ip=local_ip)
     
     if ok:
-        expected_ver = "1.3.0"
+        expected_ver = "1.3.2"
         verify_node_online(esp_ip, expected_version=expected_ver, max_wait_sec=35)
     else:
         print("[FAIL] OTA flashing process failed.")
