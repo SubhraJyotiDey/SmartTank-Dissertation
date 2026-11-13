@@ -97,6 +97,10 @@ public:
         xTaskCreatePinnedToCore(rooftopWorkerTask, "RooftopPoller", 4096, this, 1, NULL, 0);
     }
 
+    void setScriptUrl(const String& url) {
+        // Stored / handled in processChunkedUpload
+    }
+
     bool isRecording() const { return recordingActive; }
     bool isUploading() const { return uploadingActive; }
     String getEventName() const { return eventName; }

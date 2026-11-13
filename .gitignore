@@ -8,3 +8,5 @@ build/
 scratch/
 .system_generated/
 firmware/binaries/
+__pycache__/
+*.pyc

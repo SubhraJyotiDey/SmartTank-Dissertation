@@ -1,14 +1,14 @@
 {
-  "firmware_version": "1.2.5",
-  "published_at": "2026-11-13T03:38:00Z",
+  "firmware_version": "1.3.0",
+  "published_at": "2026-11-13T04:00:00Z",
   "pressure_node": {
-    "version": "1.2.5",
+    "version": "1.3.0",
     "filename": "pressure_node_firmware.bin",
-    "description": "Floor 1 Pressure Tap Node v1.2.5: Direct instantaneous 5Hz MQTT streaming, direct live waveforms, zero synthetic filters, NO Node 3."
+    "description": "Floor 1 Pressure Tap Node v1.3.0: Direct instantaneous 5Hz MQTT streaming, direct live waveforms, zero synthetic filters, OTA update endpoint."
   },
   "ultrasonic_node": {
-    "version": "1.2.5",
+    "version": "1.3.0",
     "filename": "ultrasonic_node_firmware.bin",
-    "description": "Ultrasonic Tank Node with direct level measurement and ESP32 HTTP API."
+    "description": "Ultrasonic Tank Node v1.3.0: Direct level measurement and ESP32 HTTP API with synchronized OTA."
   }
 }

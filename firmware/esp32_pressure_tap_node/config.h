@@ -58,11 +58,15 @@
 // =========================================================================
 // 3. DEFAULT CALIBRATION & TANK GEOMETRY (SAVED IN NVS/PREFERENCES)
 // =========================================================================
-// Default pressures (will be overridden when you calibrate via Web Server)
-#define DEFAULT_P_EMPTY_KPA     25.0f   // Elevation head pressure when tank is empty
-#define DEFAULT_P_FULL_KPA      40.0f   // Elevation head + full tank
+// Default pressures for Floor 1 Tap Node (Overridden by Flash NVS /api/calibrate)
+#define DEFAULT_P_EMPTY_KPA     61.4f   // Elevation head pressure at Floor 1 when tank is empty (61.4 kPa)
+#define DEFAULT_P_FULL_KPA      73.4f   // Elevation head + full tank at Floor 1 (73.4 kPa)
 #define DEFAULT_TANK_DEPTH_CM   122.0f  // Height of water in tank when 100% full (122 cm)
-#define DEFAULT_TANK_CAPACITY_L 2000.0f // Overhead tank volume (Liters)
+#define DEFAULT_TANK_CAPACITY_L 1000.0f // Overhead tank volume (Liters)
+
+// Ultrasonic Ground Truth Reference: Air gap distance from sensor face to water when tank is 100% full (Tank Full Scenario)
+#define DEFAULT_ULTRASONIC_FULL_DISTANCE_CM 6.0f   // Max water mark / tank full distance (cm)
+#define DEFAULT_SENSOR_OFFSET_CM            DEFAULT_ULTRASONIC_FULL_DISTANCE_CM
 
 // =========================================================================
 // 4. TAP OPEN / PRESSURE DROP COMPENSATION CONSTANTS
@@ -127,7 +131,7 @@
 // =========================================================================
 // 8. AUTOMATIC CLOUD OVER-THE-AIR (OTA) SELF-UPDATE (EVERY 15 MINUTES)
 // =========================================================================
-#define FIRMWARE_VERSION            "1.2.5"
+#define FIRMWARE_VERSION            "1.3.0"
 #define AUTO_OTA_ENABLED            true
 #define OTA_CHECK_INTERVAL_MIN      15      // Check for new updates every 15 minutes
 #define OTA_NODE_NAME               "pressure_node"

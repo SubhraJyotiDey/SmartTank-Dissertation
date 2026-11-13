@@ -52,7 +52,7 @@
 // =========================================================================
 // 5. AUTOMATIC CLOUD OVER-THE-AIR (OTA) SELF-UPDATE (EVERY 15 MINUTES)
 // =========================================================================
-#define FIRMWARE_VERSION            "1.2.8"
+#define FIRMWARE_VERSION            "1.3.0"
 #define AUTO_OTA_ENABLED            true
 #define OTA_CHECK_INTERVAL_MIN      15      // Check for new updates every 15 minutes
 #define OTA_NODE_NAME               "ultrasonic_node"
