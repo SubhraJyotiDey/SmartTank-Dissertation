@@ -1772,7 +1772,7 @@
       updateEventMonitor(d);
 
       // Direct Hardware Stream Oscilloscope Rendering (True 5 Hz stream / 10 Hz burst, zero synthetic lag)
-      if (d.p !== undefined && !isNaN(d.p) && d.p >= 0) {
+      if (d.p !== undefined && !isNaN(d.p) && d.p > 0) {
         lastOscilloscopeUpdate = Date.now();
         targetPressure = d.p;
         const pVal = parseFloat(d.p.toFixed(2));
@@ -2100,19 +2100,40 @@
           const item = data.latest;
           const cap = parseFloat(document.getElementById('inputTankCap')?.value || 1000);
           const depth = parseFloat(document.getElementById('inputTankDepth')?.value || 122);
-          const lvl = (item.pressure_level !== undefined && item.pressure_level !== null) ? item.pressure_level : 0;
+
+          // Extract pressure metrics; if current minute row only has Node 2 ultrasonic data (P=0),
+          // search history backwards for last valid non-zero pressure to avoid transient zeroing
+          let pVal = (item.pressure_kpa !== undefined && item.pressure_kpa !== null) ? item.pressure_kpa : 0;
+          let vVal = (item.voltage !== undefined && item.voltage !== null) ? item.voltage : 0;
+          let lvl = (item.pressure_level !== undefined && item.pressure_level !== null) ? item.pressure_level : 0;
+          let hVal = item.head_m || 0;
+          let sVal = item.state || 'STATIC';
+
+          if (pVal <= 0 && data.history && data.history.length > 0) {
+            for (let i = data.history.length - 1; i >= 0; i--) {
+              const h = data.history[i];
+              if (h.pressure_kpa && h.pressure_kpa > 0) {
+                pVal = h.pressure_kpa;
+                vVal = h.voltage || 0;
+                lvl = h.pressure_level || 0;
+                hVal = h.head_m || 0;
+                sVal = h.state || 'STATIC';
+                break;
+              }
+            }
+          }
 
           const telemetryObj = {
-            p: (item.pressure_kpa !== undefined && item.pressure_kpa !== null) ? item.pressure_kpa : 0,
+            p: pVal,
             l: lvl,
-            v: (item.voltage !== undefined && item.voltage !== null) ? item.voltage : 0,
+            v: vVal,
             d: 0.0,
-            s: item.state || 'STATIC',
-            h: item.head_m || 0,
+            s: sVal,
+            h: hVal,
             vol: (lvl / 100.0) * cap,
             cap: cap,
             depth: depth,
-            adc: Math.round(((item.voltage !== undefined && item.voltage !== null) ? item.voltage : 0) * (26666 / 5.0)),
+            adc: Math.round(((vVal || 0) * (26666 / 5.0))),
             u_l: (item.ultrasonic_level !== undefined && item.ultrasonic_level !== null) ? item.ultrasonic_level : -1,
             u_d: (item.ultrasonic_dist !== undefined && item.ultrasonic_dist !== null) ? item.ultrasonic_dist : -1,
             p_emp: item.p_empty !== undefined ? item.p_empty : (parseFloat(document.getElementById('inputEmptyKpa')?.value) || 61.4),
@@ -2123,7 +2144,7 @@
           handleLiveTelemetry(telemetryObj);
           activeDataSource = 'sheets';
           updateMqttBadge('online', 'CLOUD SYNC (' + (data.sheet || 'Floor 1') + ')');
-          if (telemetryObj.p >= 0) {
+          if (telemetryObj.p > 0) {
             targetPressure = telemetryObj.p;
           }
         }
