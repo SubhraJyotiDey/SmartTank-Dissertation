@@ -3,9 +3,6 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0">
-  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
-  <meta http-equiv="Pragma" content="no-cache">
-  <meta http-equiv="Expires" content="0">
   <title>Smart Tank Cloud Command Center | Subhra Jyoti Dey</title>
   <meta name="description" content="Global Cloud Command Center and Telemetry Dashboard for Non-Invasive Hydrostatic Water Level Sensing Architecture by Subhra Jyoti Dey.">
   <meta name="theme-color" content="#070b14">
@@ -702,188 +699,6 @@
         gap: 0.5rem;
       }
     }
-
-    /* =========================================================================
-       Pump Relay Control Center Styles (PIN Guarded)
-       ========================================================================= */
-    .pump-card {
-      border: 1px solid rgba(14, 165, 233, 0.4) !important;
-      box-shadow: 0 0 35px rgba(14, 165, 233, 0.12) !important;
-      margin-bottom: 1.5rem !important;
-      background: linear-gradient(135deg, rgba(15, 23, 42, 0.85) 0%, rgba(12, 74, 110, 0.22) 100%) !important;
-    }
-
-    .pump-icon-halo {
-      width: 34px;
-      height: 34px;
-      border-radius: 9px;
-      background: rgba(14, 165, 233, 0.15);
-      border: 1px solid rgba(14, 165, 233, 0.35);
-      color: #38bdf8;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }
-
-    .pump-control-grid {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 1.25rem;
-      align-items: stretch;
-    }
-
-    @media (max-width: 820px) {
-      .pump-control-grid {
-        grid-template-columns: 1fr;
-      }
-    }
-
-    .pump-switch-box {
-      background: rgba(0, 0, 0, 0.4);
-      border: 1px solid var(--card-border);
-      border-radius: 14px;
-      padding: 1.2rem;
-      display: flex;
-      flex-direction: column;
-      justify-content: space-between;
-    }
-
-    .pump-pin-box {
-      background: rgba(0, 0, 0, 0.4);
-      border: 1px solid var(--card-border);
-      border-radius: 14px;
-      padding: 1.2rem;
-      display: flex;
-      flex-direction: column;
-      justify-content: space-between;
-    }
-
-    /* Cyberpunk / iOS Modern High-Tech Toggle Switch */
-    .pump-toggle-switch {
-      position: relative;
-      display: inline-block;
-      width: 76px;
-      height: 40px;
-      flex-shrink: 0;
-      cursor: pointer;
-    }
-
-    .pump-toggle-switch input {
-      opacity: 0;
-      width: 0;
-      height: 0;
-    }
-
-    .pump-toggle-slider {
-      position: absolute;
-      top: 0;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      background-color: #1e293b;
-      border: 2px solid rgba(255, 255, 255, 0.2);
-      border-radius: 40px;
-      transition: all 0.35s cubic-bezier(0.4, 0, 0.2, 1);
-    }
-
-    .pump-slider-knob {
-      position: absolute;
-      height: 28px;
-      width: 28px;
-      left: 4px;
-      bottom: 4px;
-      background-color: #94a3b8;
-      border-radius: 50%;
-      transition: all 0.35s cubic-bezier(0.4, 0, 0.2, 1);
-      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
-    }
-
-    .pump-toggle-switch input:checked + .pump-toggle-slider {
-      background: linear-gradient(135deg, #10b981 0%, #06b6d4 100%);
-      border-color: #34d399;
-      box-shadow: 0 0 22px rgba(16, 185, 129, 0.45);
-    }
-
-    .pump-toggle-switch input:checked + .pump-toggle-slider .pump-slider-knob {
-      transform: translateX(36px);
-      background-color: #ffffff;
-      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
-    }
-
-    .badge-pump-on {
-      background: rgba(16, 185, 129, 0.2) !important;
-      border-color: rgba(16, 185, 129, 0.45) !important;
-      color: #34d399 !important;
-      box-shadow: 0 0 12px rgba(16, 185, 129, 0.25);
-    }
-
-    .badge-pump-off {
-      background: rgba(100, 116, 139, 0.2) !important;
-      border-color: rgba(100, 116, 139, 0.4) !important;
-      color: #94a3b8 !important;
-    }
-
-    .badge-pump-lock {
-      background: rgba(245, 158, 11, 0.2) !important;
-      border-color: rgba(245, 158, 11, 0.45) !important;
-      color: #fbbf24 !important;
-    }
-
-    .pin-input-wrap {
-      display: flex;
-      align-items: center;
-      background: rgba(15, 23, 42, 0.85);
-      border: 1px solid var(--card-border);
-      border-radius: 10px;
-      padding: 0.15rem 0.65rem;
-      transition: all 0.2s;
-    }
-
-    .pin-input-wrap:focus-within {
-      border-color: var(--accent-cyan);
-      box-shadow: 0 0 12px rgba(56, 189, 248, 0.3);
-    }
-
-    .pin-input-wrap input {
-      border: none !important;
-      background: transparent !important;
-      padding: 0.55rem 0.6rem !important;
-      font-size: 1.05rem !important;
-      font-family: 'JetBrains Mono', monospace !important;
-      letter-spacing: 0.22em;
-      color: #ffffff !important;
-      outline: none;
-      flex: 1;
-    }
-
-    .pin-eye-btn {
-      background: transparent;
-      border: none;
-      color: var(--text-muted);
-      cursor: pointer;
-      font-size: 1rem;
-      padding: 0.2rem 0.4rem;
-    }
-
-    .pin-shake {
-      animation: pinShakeAnim 0.5s ease-in-out;
-      border-color: #ef4444 !important;
-      box-shadow: 0 0 18px rgba(239, 68, 68, 0.45) !important;
-    }
-
-    @keyframes pinShakeAnim {
-      0%, 100% { transform: translateX(0); }
-      20%, 60% { transform: translateX(-8px); }
-      40%, 80% { transform: translateX(8px); }
-    }
-
-    .pin-feedback {
-      font-size: 0.78rem;
-      font-weight: 600;
-      margin-top: 6px;
-      min-height: 18px;
-      transition: all 0.2s;
-    }
   </style>
 </head>
 <body>
@@ -919,9 +734,9 @@
         <div id="adcBadge" class="badge" onclick="openAdcModal()" style="background: rgba(14,165,233,0.15); border-color: rgba(14,165,233,0.3); color: #38bdf8; cursor:pointer;" title="Click to learn what 16-bit ADC counts mean">
           ADC: <span id="adcModeText" style="margin-left:4px;">ADS1115 (16-bit) ℹ️</span>
         </div>
-        <!-- Cloud OTA Version Badge (Click to Update Immediately) -->
-        <div id="otaBadge" class="badge" onclick="sendUpdateFirmwareNow(0)" style="background: rgba(168,85,247,0.15); border-color: rgba(168,85,247,0.3); color: #c084fc; cursor: pointer;" title="Click to update firmware immediately on both nodes via Cloud OTA">
-          OTA: <span id="otaVersionText" style="margin-left:4px;">v1.2.6</span> ⚡
+        <!-- Cloud OTA Version -->
+        <div id="otaBadge" class="badge" style="background: rgba(168,85,247,0.15); border-color: rgba(168,85,247,0.3); color: #c084fc;">
+          OTA: <span id="otaVersionText" style="margin-left:4px;">v1.2.4</span>
         </div>
         <!-- Local IP Link Pill (if user is on home network) -->
         <a id="localLink" href="http://192.168.29.125/" target="_blank" class="badge btn-secondary" style="color:var(--text-muted); text-decoration:none;" title="Open local node if on same home Wi-Fi">
@@ -1129,100 +944,6 @@
       </div>
     </div>
 
-    <!-- Node 3 High-Power Pump Relay Controller (Deactivated / Load-Shedded for Telemetry Data Collection) -->
-    <div class="card pump-card" id="pumpControlCard" style="display: none !important;">
-      <div class="card-title">
-        <div style="display: flex; align-items: center; gap: 0.65rem;">
-          <div class="pump-icon-halo">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/>
-              <circle cx="12" cy="12" r="4"/>
-            </svg>
-          </div>
-          <span style="color: #ffffff; font-weight: 700; font-size: 1.05rem;">Pump Relay Control Center (Node 3 • JQX-15F 30A)</span>
-        </div>
-        <div style="display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;">
-          <span id="pumpStatusBadge" class="badge badge-pump-off">
-            <span class="dot"></span>
-            <span id="pumpStatusBadgeText">PUMP OFF (STANDBY)</span>
-          </span>
-          <span class="badge" style="background: rgba(234, 179, 8, 0.15); border-color: rgba(234, 179, 8, 0.35); color: #facc15; font-weight: 600;">
-            🔒 PIN Protected
-          </span>
-        </div>
-      </div>
-
-      <p class="note-text" style="margin-bottom: 1.25rem;">
-        Direct bidirectional cloud control over the Node 3 electromechanical pump actuator. Operates through high-speed ESP-NOW telemetry mesh with 10s anti-chatter protection and 35-minute autonomous thermal/runtime safety watchdog.
-      </p>
-
-      <div class="pump-control-grid">
-        <!-- Switch & Status Column -->
-        <div class="pump-switch-box">
-          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 0.5rem;">
-            <span style="font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); font-weight: 600;">Relay Power Switch</span>
-            <span id="pumpStateSubtext" style="font-size: 0.72rem; color: #38bdf8; font-family:'JetBrains Mono';">PIN Required</span>
-          </div>
-
-          <div style="display: flex; align-items: center; gap: 1.25rem; margin: 0.75rem 0;">
-            <!-- Modern Cyberpunk/iOS Toggle Switch -->
-            <label class="pump-toggle-switch" title="Toggle Pump (Security PIN Required)">
-              <input type="checkbox" id="pumpToggleSwitch" onchange="onPumpSwitchChanged(this)">
-              <span class="pump-toggle-slider">
-                <span class="pump-slider-knob"></span>
-              </span>
-            </label>
-
-            <!-- Big Visual State Label -->
-            <div>
-              <div id="pumpStateHeading" style="font-size: 1.25rem; font-weight: 800; font-family:'JetBrains Mono', monospace; color: #94a3b8; letter-spacing: 0.04em;">
-                OFFLINE / STOPPED
-              </div>
-              <div id="pumpLockoutNotice" style="display:none; color: #f59e0b; font-size: 0.75rem; margin-top: 2px;">
-                ⚠️ Safety Cooldown Active: Wait before restarting
-              </div>
-            </div>
-          </div>
-
-          <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: auto; padding-top: 0.5rem; border-top: 1px solid rgba(255,255,255,0.06);">
-            Protected by anti-chatter deadband (10s minimum between opposing toggles).
-          </div>
-        </div>
-
-        <!-- Security Password & Action Column -->
-        <div class="pump-pin-box">
-          <label style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.4rem;">
-            <span style="font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); font-weight: 600;">
-              🔑 Security Authorization PIN
-            </span>
-            <span style="font-size: 0.72rem; color: #94a3b8; font-family:'JetBrains Mono';">Restricted Access</span>
-          </label>
-
-          <div class="pin-input-group">
-            <div class="pin-input-wrap" id="pinInputWrap">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color: #64748b; margin-right: 4px; flex-shrink: 0;"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-              <input type="password" id="pumpPinInput" maxlength="8" placeholder="Enter Security PIN..." autocomplete="off" oninput="clearPinError()" onkeydown="if(event.key==='Enter') triggerPumpPinAction(true)">
-              <button type="button" class="pin-eye-btn" onclick="togglePinVisibility()" title="Show/Hide PIN">👁️</button>
-            </div>
-          </div>
-
-          <div id="pinErrorMsg" class="pin-feedback" style="display: none; color: #f43f5e;"></div>
-
-          <!-- Quick Action Buttons -->
-          <div class="btn-group" style="margin-top: 0.75rem;">
-            <button class="btn btn-success" style="flex: 1; display:flex; align-items:center; justify-content:center; gap:0.4rem;" onclick="triggerPumpPinAction(true)">
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-              Turn ON Pump
-            </button>
-            <button class="btn btn-danger" style="flex: 1; display:flex; align-items:center; justify-content:center; gap:0.4rem;" onclick="triggerPumpPinAction(false)">
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="1"/></svg>
-              Turn OFF Pump
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-
     <!-- Calibration & Synchronization Settings Grid -->
     <div class="settings-grid">
       <!-- Two-Point Hydrostatic Calibration -->
@@ -1286,10 +1007,6 @@
             <label>Tank Capacity (Liters)</label>
             <input type="number" id="inputTankCap" value="1000">
           </div>
-          <div class="form-group" style="flex: 1; min-width: 170px;">
-            <label>Ultrasound Tank Full Dist (cm) <span style="font-size: 0.72rem; color: var(--accent-cyan);">(100% Full Air Gap)</span></label>
-            <input type="number" step="0.1" id="inputUsFullDist" value="6.0" placeholder="6.0">
-          </div>
         </div>
 
         <div class="form-group">
@@ -1302,32 +1019,8 @@
           <button class="btn btn-secondary" onclick="sendTriggerSheetsCmd()">Log to Sheets (1-Min Slot)</button>
           <button class="btn btn-purple" onclick="sendCheckOtaCmd()">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
-            Check OTA
+            Check OTA Update
           </button>
-        </div>
-
-        <hr style="border: 0; border-top: 1px solid var(--card-border); margin: 1.25rem 0;">
-
-        <!-- Immediate Firmware Update Section -->
-        <div style="background: rgba(147, 51, 234, 0.08); border: 1px solid rgba(168, 85, 247, 0.3); border-radius: 10px; padding: 0.9rem 1.1rem; margin-bottom: 1.25rem;">
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.4rem; flex-wrap: wrap; gap: 0.5rem;">
-            <label style="margin: 0; font-weight: 700; color: #c084fc; font-size: 0.88rem;">⚡ Immediate Cloud OTA Firmware Flash</label>
-            <span style="font-size: 0.72rem; color: #a855f7; background: rgba(168, 85, 247, 0.15); padding: 2px 8px; border-radius: 6px; font-weight: 600;">BYPASS 15-MIN TIMER</span>
-          </div>
-          <p class="note-text" style="margin-bottom: 0.75rem; font-size: 0.78rem;">
-            Forces an immediate download of the newest firmware from GitHub Releases <code>latest</code> and flashes the ESP32 hardware right now.
-          </p>
-          <div class="btn-group">
-            <button class="btn" style="background: linear-gradient(135deg, #9333ea, #c026d3); color: white; font-weight: 700; border: none; box-shadow: 0 4px 15px rgba(147, 51, 234, 0.35);" onclick="sendUpdateFirmwareNow(0)" title="Force downloads and flashes newest firmware from GitHub Releases 'latest' on BOTH ESP32 nodes immediately">
-              ⚡ Update Both Nodes Immediately
-            </button>
-            <button class="btn" style="background: rgba(147, 51, 234, 0.2); border: 1px solid rgba(192, 38, 211, 0.4); color: #e9d5ff;" onclick="sendUpdateFirmwareNow(1)" title="Flashes Node 1 (Tap Head Pressure) immediately">
-              ⚡ Flash Node 1 (Pressure)
-            </button>
-            <button class="btn" style="background: rgba(147, 51, 234, 0.2); border: 1px solid rgba(192, 38, 211, 0.4); color: #e9d5ff;" onclick="sendUpdateFirmwareNow(2)" title="Flashes Node 2 (Overhead Ultrasonic) immediately">
-              ⚡ Flash Node 2 (Ultrasonic)
-            </button>
-          </div>
         </div>
 
         <hr style="border: 0; border-top: 1px solid var(--card-border); margin: 1.25rem 0;">
@@ -1441,23 +1134,9 @@
     let eventColorIndex = 0;
     let lastMsgTime = 0;
 
-    // High-Precision Digital Oscilloscope Parameters
-    const OSCILLOSCOPE_POINTS = 100; // 100-sample high-fidelity buffer (20s at 5 Hz, 10s at 10 Hz)
-    let lastOscilloscopeUpdate = Date.now();
-    let targetPressure = 69.5;
-
-    // Initialize Chart.js with hardware-accelerated linear phosphor oscilloscope trace
+    // Initialize Chart.js
     function initChart() {
       const ctx = document.getElementById('pressureChart').getContext('2d');
-
-      // Pre-fill buffer so oscilloscope is ready to sweep immediately
-      labels.length = 0;
-      pressureData.length = 0;
-      for (let i = 0; i < OSCILLOSCOPE_POINTS; i++) {
-        labels.push('');
-        pressureData.push(targetPressure);
-      }
-
       chart = new Chart(ctx, {
         type: 'line',
         data: {
@@ -1468,157 +1147,27 @@
             borderColor: '#38bdf8',
             backgroundColor: 'rgba(56, 189, 248, 0.08)',
             borderWidth: 2,
-            tension: 0, // Zero spline calculation overhead = zero lag!
+            tension: 0.25,
             fill: true,
-            pointRadius: 0,
-            pointHoverRadius: 0
+            pointRadius: 0
           }]
         },
         options: {
           responsive: true,
           maintainAspectRatio: false,
-          plugins: {
-            legend: { display: false },
-            tooltip: { enabled: false } // Disable hit-testing for instant 60 FPS performance
-          },
+          plugins: { legend: { display: false } },
           scales: {
-            x: { display: false, grid: { display: false } },
+            x: { display: false },
             y: {
-              suggestedMin: 55,
+              suggestedMin: 0,
               suggestedMax: 80,
               grid: { color: 'rgba(255, 255, 255, 0.05)' },
               ticks: { color: '#94a3b8', font: { family: 'JetBrains Mono', size: 10 } }
             }
           },
-          animation: false,
-          hover: { mode: null }
+          animation: { duration: 0 }
         }
       });
-
-      // Sweep Keepalive Engine: sweeps flatline baseline only when hardware stream pauses > 350ms
-      setInterval(() => {
-        if (Date.now() - lastOscilloscopeUpdate > 350 && chart && pressureData.length > 0) {
-          const lastVal = pressureData[pressureData.length - 1];
-          pressureData.push(lastVal);
-          if (pressureData.length > OSCILLOSCOPE_POINTS) {
-            pressureData.shift();
-          }
-          chart.update('none'); // Instant canvas render without layout recalculation
-        }
-      }, 200);
-    }
-
-    // Active Data Source Tracking
-    let activeDataSource = 'none'; // 'mqtt', 'sheets', 'local'
-    let isPollingSheets = false;
-    let isPollingLocal = false;
-    const SCRIPT_URL = localStorage.getItem('google_script_url') || 
-      'https://script.google.com/macros/s/AKfycbx7BzoSWxozJTqKUzqhG7wfK0P1MwTNogPdGqFiA2-jvY_G2s5sMhVWGPw2E-p2y0yU/exec';
-    const LOCAL_NODE1_URL = 'http://192.168.29.125/api/status';
-
-    // 1. Google Sheets Cloud Telemetry Poller (Universal & 100% Reliable anywhere in the world)
-    async function fetchFromGoogleSheets() {
-      if (isPollingSheets) return;
-      // If we are actively receiving live 5Hz MQTT messages within the last 3.5s, skip sheet poll
-      if (Date.now() - lastMsgTime < 3500 && activeDataSource === 'mqtt') {
-        return;
-      }
-      isPollingSheets = true;
-      try {
-        const scriptUrl = document.getElementById('inputScriptUrl')?.value || SCRIPT_URL;
-        const resp = await fetch(scriptUrl + '?action=get_latest&t=' + Date.now(), { cache: 'no-store' });
-        if (!resp.ok) throw new Error('HTTP ' + resp.status);
-        const data = await resp.json();
-        if (data.status === 'success' && data.latest) {
-          const item = data.latest;
-          const cap = parseFloat(document.getElementById('inputTankCap')?.value || 1000);
-          const depth = parseFloat(document.getElementById('inputTankDepth')?.value || 122);
-          const lvl = (item.pressure_level !== undefined && item.pressure_level !== null) ? item.pressure_level : 0;
-
-          const telemetryObj = {
-            p: item.pressure_kpa || 0,
-            l: lvl,
-            v: item.voltage || 0,
-            d: 0.0,
-            s: item.state || 'STATIC',
-            h: item.head_m || 0,
-            vol: (lvl / 100.0) * cap,
-            cap: cap,
-            depth: depth,
-            adc: Math.round((item.voltage || 1.89) * (26666 / 5.0)),
-            u_l: (item.ultrasonic_level !== undefined && item.ultrasonic_level !== null) ? item.ultrasonic_level : -1,
-            u_d: (item.ultrasonic_dist !== undefined && item.ultrasonic_dist !== null) ? item.ultrasonic_dist : -1,
-            p_emp: 61.4,
-            p_ful: 73.4,
-            ver: '1.2.8'
-          };
-
-          handleLiveTelemetry(telemetryObj);
-          activeDataSource = 'sheets';
-          updateMqttBadge('online', 'CLOUD SYNC (' + (data.sheet || 'Floor 1') + ')');
-
-          // Set oscilloscope sweep target to current reading (do not inject 30-min history into high-speed buffer)
-          if (telemetryObj.p !== undefined && !isNaN(telemetryObj.p) && telemetryObj.p > 0) {
-            targetPressure = telemetryObj.p;
-          }
-        }
-      } catch (err) {
-        console.warn('[SHEETS POLL] Could not fetch get_latest:', err);
-        if (Date.now() - lastMsgTime > 8000) {
-          updateMqttBadge('offline', 'OFFLINE');
-        }
-      } finally {
-        isPollingSheets = false;
-      }
-    }
-
-    // 2. Direct Local ESP32 Poller (Active on localhost & LAN)
-    async function fetchFromLocalEsp() {
-      if (window.location.protocol === 'https:') return; // Browsers block HTTP from HTTPS
-      if (isPollingLocal) return;
-      isPollingLocal = true;
-      try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 3500); // 3.5s resilient timeout for ESP32
-        const resp = await fetch(LOCAL_NODE1_URL, { signal: controller.signal, cache: 'no-store' });
-        clearTimeout(timeoutId);
-        if (resp.ok) {
-          const s = await resp.json();
-          const telemetryObj = {
-            p: s.pressure_kpa,
-            l: s.level_pct,
-            v: s.voltage,
-            d: s.dp_dt,
-            s: s.tap_state,
-            h: s.head_m,
-            vol: s.volume_liters,
-            cap: s.tank_capacity,
-            depth: s.tank_depth,
-            adc: s.raw_adc,
-            u_l: s.rooftop_level,
-            u_d: s.rooftop_dist,
-            u_f: s.us_full_dist,
-            p_emp: s.p_empty,
-            p_ful: s.p_full,
-            ver: s.firmware_version,
-            pump: s.pump_active_tracked,
-            p_lock: s.pump_safety_lockout,
-            rec: s.event_recording,
-            rec_s: s.event_elapsed,
-            dur: s.event_duration,
-            samples: s.event_samples,
-            evt: s.event_name,
-            up_pct: s.event_upload_pct
-          };
-          handleLiveTelemetry(telemetryObj);
-          activeDataSource = 'local';
-          updateMqttBadge('online', 'LOCAL LAN (ESP32)');
-        }
-      } catch (e) {
-        // Local node not accessible from this client
-      } finally {
-        isPollingLocal = false;
-      }
     }
 
     // Connect to MQTT Broker over WebSockets
@@ -1640,10 +1189,8 @@
       });
 
       mqttClient.on('connect', () => {
-        console.log('✅ Connected to MQTT Broker!');
-        if (activeDataSource !== 'sheets') {
-          updateMqttBadge('online', 'CLOUD CONNECTED');
-        }
+        console.log('✅ Connected to HiveMQ Broker!');
+        updateMqttBadge('online', 'CLOUD CONNECTED');
         showToast('Connected to Global Cloud Broker');
 
         // Subscribe to live telemetry and status acknowledgments
@@ -1653,9 +1200,6 @@
         mqttClient.subscribe(topicStatus, (err) => {
           if (!err) console.log('Subscribed to status:', topicStatus);
         });
-        mqttClient.subscribe('smarttank/dissertation/pump/status', (err) => {
-          if (!err) console.log('Subscribed to pump status:', 'smarttank/dissertation/pump/status');
-        });
       });
 
       mqttClient.on('message', (topic, message) => {
@@ -1664,10 +1208,8 @@
           const data = JSON.parse(payloadStr);
 
           if (topic === topicTelemetry) {
-            activeDataSource = 'mqtt';
-            updateMqttBadge('online', 'LIVE MQTT (5 Hz)');
             handleLiveTelemetry(data);
-          } else if (topic === topicStatus || topic === 'smarttank/dissertation/pump/status') {
+          } else if (topic === topicStatus) {
             handleStatusAck(data);
           }
         } catch (e) {
@@ -1676,16 +1218,16 @@
       });
 
       mqttClient.on('reconnect', () => {
-        if (activeDataSource === 'none') updateMqttBadge('connecting', 'RECONNECTING...');
+        updateMqttBadge('connecting', 'RECONNECTING...');
       });
 
       mqttClient.on('offline', () => {
-        if (activeDataSource === 'none') updateMqttBadge('offline', 'CLOUD OFFLINE');
+        updateMqttBadge('offline', 'CLOUD OFFLINE');
       });
 
       mqttClient.on('error', (err) => {
         console.error('MQTT Connection Error:', err);
-        if (activeDataSource === 'none') updateMqttBadge('offline', 'ERROR');
+        updateMqttBadge('offline', 'ERROR');
       });
     }
 
@@ -1749,21 +1291,6 @@
       if (d.p_emp !== undefined) document.getElementById('valPEmpty').innerText = d.p_emp.toFixed(1);
       if (d.p_ful !== undefined) document.getElementById('valPFull').innerText = d.p_ful.toFixed(1);
 
-      // Populate Tank & Ultrasound inputs if not user-focused
-      const usInput = document.getElementById('inputUsFullDist');
-      if (usInput && !usInput.matches(':focus')) {
-        if (d.u_f !== undefined) usInput.value = d.u_f.toFixed(1);
-        else if (d.offset_cm !== undefined) usInput.value = d.offset_cm.toFixed(1);
-      }
-      const depthInput = document.getElementById('inputTankDepth');
-      if (depthInput && !depthInput.matches(':focus') && d.depth) {
-        depthInput.value = d.depth.toFixed(0);
-      }
-      const capInput = document.getElementById('inputTankCap');
-      if (capInput && !capInput.matches(':focus') && d.cap) {
-        capInput.value = d.cap.toFixed(0);
-      }
-
       // Firmware version
       if (d.ver) document.getElementById('otaVersionText').innerText = 'v' + d.ver;
 
@@ -1787,52 +1314,23 @@
         compBanner.style.display = 'none';
       }
 
-      // Real-time Node 3 Pump Relay Telemetry
-      if (d.pump !== undefined) {
-        updatePumpStatusUI(d.pump, d.p_lock);
-      }
-
       // Event Recorder Monitor
       updateEventMonitor(d);
 
-      // Dynamic Stream Frequency Badge (5 Hz normal vs 10 Hz high-speed burst)
-      const pingEl = document.getElementById('pingBadge');
-      if (pingEl) {
-        if (d.rec) {
-          pingEl.innerText = '🔴 10 Hz EVENT BURST';
-          pingEl.style.color = '#ef4444';
-          pingEl.style.background = 'rgba(239, 68, 68, 0.15)';
-          pingEl.style.padding = '2px 8px';
-          pingEl.style.borderRadius = '4px';
-          pingEl.style.border = '1px solid #ef4444';
-          pingEl.style.fontWeight = '700';
-        } else {
-          pingEl.innerText = '🟢 LIVE 5 Hz STREAM';
-          pingEl.style.color = '#10b981';
-          pingEl.style.background = 'rgba(16, 185, 129, 0.15)';
-          pingEl.style.padding = '2px 8px';
-          pingEl.style.borderRadius = '4px';
-          pingEl.style.border = '1px solid #10b981';
-          pingEl.style.fontWeight = '700';
-        }
-      }
-
-      // Direct Hardware Stream Oscilloscope Rendering (True 5 Hz stream / 10 Hz burst, zero synthetic lag)
+      // Chart Update (Real-time live waveform as tap opens/closes)
       if (d.p !== undefined && !isNaN(d.p)) {
-        lastOscilloscopeUpdate = Date.now();
-        targetPressure = d.p;
-        const pVal = parseFloat(d.p.toFixed(2));
-        pressureData.push(pVal);
-        if (pressureData.length > OSCILLOSCOPE_POINTS) {
+        const now = new Date().toLocaleTimeString();
+        labels.push(now);
+        pressureData.push(parseFloat(d.p.toFixed(2)));
+        if (labels.length > 60) {
+          labels.shift();
           pressureData.shift();
         }
         if (chart) {
-          // Dynamic Y-axis auto-scaling with padding
-          if (pVal > chart.options.scales.y.suggestedMax - 2 || pVal < chart.options.scales.y.suggestedMin + 2) {
-            chart.options.scales.y.suggestedMin = Math.max(0, Math.floor(pVal - 15));
-            chart.options.scales.y.suggestedMax = Math.ceil(pVal + 15);
+          if (d.p > chart.options.scales.y.suggestedMax - 2) {
+            chart.options.scales.y.suggestedMax = Math.ceil(d.p + 10);
           }
-          chart.update('none'); // Direct phosphor trace update
+          chart.update();
         }
       }
     }
@@ -1897,12 +1395,6 @@
       if (d.msg) {
         showToast('ESP32: ' + d.msg);
       }
-      if (d.pump !== undefined) {
-        updatePumpStatusUI(d.pump, d.p_lock);
-      }
-      if (d.reason) {
-        showToast('Pump ' + (d.pump ? 'ON' : 'OFF') + ' (' + d.reason + ')');
-      }
     }
 
     // Send Commands over MQTT to ESP32
@@ -1913,9 +1405,6 @@
       }
       const payload = JSON.stringify(cmdObj);
       mqttClient.publish(topicCommand, payload);
-      if (cmdObj.cmd && cmdObj.cmd.startsWith('pump')) {
-        mqttClient.publish('smarttank/dissertation/pump/cmd', payload);
-      }
       console.log('🚀 Published Command:', payload, 'to topic:', topicCommand);
       return true;
     }
@@ -1927,153 +1416,6 @@
       if (!nameEl.value || nameEl.value.trim() === '') {
         nameEl.value = 'Tap Turn Test (' + sec + 's)';
       }
-    }
-
-    // =========================================================================
-    // Node 3 Pump Relay Controller (Security PIN Guarded)
-    // =========================================================================
-    function checkPumpAuthPin(pin) {
-      if (!pin) return false;
-      let h = 0x811c9dc5;
-      for (let i = 0; i < pin.length; i++) {
-        h ^= pin.charCodeAt(i);
-        h = Math.imul(h, 0x01000193);
-      }
-      return (h >>> 0).toString(16) === '4556c8da'; // Hash of authorized security PIN
-    }
-
-    function updatePumpStatusUI(isPumpOn, isLockout) {
-      const toggle = document.getElementById('pumpToggleSwitch');
-      const badge = document.getElementById('pumpStatusBadge');
-      const badgeText = document.getElementById('pumpStatusBadgeText');
-      const heading = document.getElementById('pumpStateHeading');
-      const subtext = document.getElementById('pumpStateSubtext');
-      const lockoutNotice = document.getElementById('pumpLockoutNotice');
-
-      const active = (isPumpOn === true || isPumpOn === 1 || isPumpOn === 'true');
-
-      if (toggle && document.activeElement !== toggle) {
-        toggle.checked = active;
-      }
-
-      if (active) {
-        if (badge) {
-          badge.className = 'badge badge-pump-on';
-          badgeText.innerText = '⚡ PUMP ON (RUNNING)';
-        }
-        if (heading) {
-          heading.innerText = 'ENERGIZED / PUMPING';
-          heading.style.color = '#10b981';
-        }
-        if (subtext) {
-          subtext.innerText = 'Relay Coil 30A Active';
-          subtext.style.color = '#34d399';
-        }
-      } else {
-        if (badge) {
-          badge.className = 'badge badge-pump-off';
-          badgeText.innerText = 'PUMP OFF (STANDBY)';
-        }
-        if (heading) {
-          heading.innerText = 'OFFLINE / STOPPED';
-          heading.style.color = '#94a3b8';
-        }
-        if (subtext) {
-          subtext.innerText = 'PIN Required to Toggle';
-          subtext.style.color = '#38bdf8';
-        }
-      }
-
-      if (lockoutNotice) {
-        if (isLockout) {
-          if (badge) {
-            badge.className = 'badge badge-pump-lock';
-            badgeText.innerText = '⚠️ SAFETY LOCKOUT';
-          }
-          lockoutNotice.style.display = 'block';
-        } else {
-          lockoutNotice.style.display = 'none';
-        }
-      }
-    }
-
-    function verifyPumpPin() {
-      const pinInput = document.getElementById('pumpPinInput');
-      const pinWrap = document.getElementById('pinInputWrap');
-      const errEl = document.getElementById('pinErrorMsg');
-      const enteredPin = (pinInput ? pinInput.value : '').trim();
-
-      if (!enteredPin) {
-        if (errEl) {
-          errEl.innerText = '⚠️ Security PIN required to control pump.';
-          errEl.style.display = 'block';
-          errEl.style.color = '#f59e0b';
-        }
-        if (pinWrap) {
-          pinWrap.classList.add('pin-shake');
-          setTimeout(() => pinWrap.classList.remove('pin-shake'), 500);
-        }
-        if (pinInput) pinInput.focus();
-        showToast('⚠️ Security PIN required');
-        return false;
-      }
-
-      if (!checkPumpAuthPin(enteredPin)) {
-        if (errEl) {
-          errEl.innerText = '❌ Access Denied: Incorrect Security PIN!';
-          errEl.style.display = 'block';
-          errEl.style.color = '#f43f5e';
-        }
-        if (pinWrap) {
-          pinWrap.classList.add('pin-shake');
-          setTimeout(() => pinWrap.classList.remove('pin-shake'), 500);
-        }
-        if (pinInput) pinInput.focus();
-        showToast('❌ Access Denied: Incorrect PIN');
-        return false;
-      }
-
-      if (errEl) {
-        errEl.innerText = '✅ Authorization Verified';
-        errEl.style.display = 'block';
-        errEl.style.color = '#10b981';
-      }
-      return true;
-    }
-
-    function clearPinError() {
-      const errEl = document.getElementById('pinErrorMsg');
-      if (errEl) errEl.style.display = 'none';
-    }
-
-    function togglePinVisibility() {
-      const pinInput = document.getElementById('pumpPinInput');
-      if (!pinInput) return;
-      pinInput.type = (pinInput.type === 'password') ? 'text' : 'password';
-    }
-
-    function onPumpSwitchChanged(switchEl) {
-      const targetState = switchEl.checked ? 1 : 0;
-
-      if (!verifyPumpPin()) {
-        // Revert switch toggle if PIN verification fails
-        switchEl.checked = !switchEl.checked;
-        return;
-      }
-
-      // Publish command over MQTT to ESP32
-      publishCommand({ cmd: 'pump', state: targetState });
-      showToast(targetState === 1 ? '⚡ Dispatched PUMP START command' : '🛑 Dispatched PUMP STOP command');
-    }
-
-    function triggerPumpPinAction(turnOn) {
-      if (!verifyPumpPin()) return;
-
-      const switchEl = document.getElementById('pumpToggleSwitch');
-      if (switchEl) switchEl.checked = turnOn;
-
-      publishCommand({ cmd: 'pump', state: turnOn ? 1 : 0 });
-      showToast(turnOn ? '⚡ Dispatched PUMP START command' : '🛑 Dispatched PUMP STOP command');
     }
 
     function sendStartEventCmd() {
@@ -2113,10 +1455,9 @@
     function sendSaveSettingsCmd() {
       const depth = parseFloat(document.getElementById('inputTankDepth').value);
       const cap = parseFloat(document.getElementById('inputTankCap').value);
-      const usFullDist = parseFloat(document.getElementById('inputUsFullDist').value);
       const url = document.getElementById('inputScriptUrl').value.trim();
-      publishCommand({ cmd: 'save_settings', depth: depth, cap: cap, us_full_dist: usFullDist, url: url });
-      showToast('Saving tank & ultrasound parameters to ESP32 Flash...');
+      publishCommand({ cmd: 'save_settings', depth: depth, cap: cap, url: url });
+      showToast('Saving tank parameters to ESP32 Flash...');
     }
 
     function sendTriggerSheetsCmd() {
@@ -2127,24 +1468,6 @@
     function sendCheckOtaCmd() {
       publishCommand({ cmd: 'check_ota' });
       showToast('ESP32 checking GitHub for new OTA firmware...');
-    }
-
-    // Force Immediate Cloud OTA Firmware Flash
-    function sendUpdateFirmwareNow(nodeNum) {
-      const targetStr = nodeNum === 0 ? 'BOTH ESP32 Nodes' : (nodeNum === 1 ? 'Node 1 (Pressure Node)' : 'Node 2 (Ultrasonic Node)');
-      if (!confirm('⚡ Update firmware on ' + targetStr + ' immediately?\n\nThe ESP32 will contact GitHub Releases \'latest\', download the newest firmware binary, flash itself, and reboot.')) return;
-      
-      const cmdStr = nodeNum === 0 ? 'update_ota_both' : (nodeNum === 1 ? 'update_ota_node1' : 'update_ota_node2');
-      publishCommand({ cmd: cmdStr });
-      showToast('⚡ Immediate firmware update command sent to ' + targetStr + '!');
-      
-      // Also trigger local endpoint directly if user is on local home Wi-Fi network
-      if (nodeNum === 2 || nodeNum === 0) {
-        try { fetch('http://192.168.29.130/api/ota_update', { method: 'POST', mode: 'no-cors' }); } catch(e) {}
-      }
-      if (nodeNum === 1 || nodeNum === 0) {
-        try { fetch('http://192.168.29.125/api/ota_update?node=' + nodeNum, { method: 'POST', mode: 'no-cors' }); } catch(e) {}
-      }
     }
 
     // Remotely Reboot Node 1 or Node 2
@@ -2217,20 +1540,10 @@
       connectMqtt();
     }
 
-    // Startup - Intelligent Multi-Tier Telemetry Engine
+    // Startup
     window.onload = () => {
       initChart();
       connectMqtt();
-
-      // Immediate Fetch: Parallel Cloud Sync & Local Subnet Poll
-      fetchFromGoogleSheets();
-      fetchFromLocalEsp();
-
-      // 1. High-speed local LAN poller every 1.5s (active on localhost/HTTP)
-      setInterval(fetchFromLocalEsp, 1500);
-
-      // 2. Cloud Google Sheets fallback poller every 5s (active whenever MQTT has no fresh stream)
-      setInterval(fetchFromGoogleSheets, 5000);
     };
   </script>
 </body>

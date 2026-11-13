@@ -1,19 +1,14 @@
 {
-  "firmware_version": "1.2.9",
-  "published_at": "2026-11-13T02:45:00Z",
+  "firmware_version": "1.2.5",
+  "published_at": "2026-11-13T03:38:00Z",
   "pressure_node": {
-    "version": "1.2.9",
+    "version": "1.2.5",
     "filename": "pressure_node_firmware.bin",
-    "description": "Floor 1 Pressure Tap Node v1.2.9 with true 5Hz live telemetry, 10Hz burst event capture, Node 3 load-shedding bypass, and 3000ms MQTT timeout."
+    "description": "Floor 1 Pressure Tap Node v1.2.5: Direct instantaneous 5Hz MQTT streaming, direct live waveforms, zero synthetic filters, NO Node 3."
   },
   "ultrasonic_node": {
-    "version": "1.2.8",
+    "version": "1.2.5",
     "filename": "ultrasonic_node_firmware.bin",
-    "description": "Ultrasonic Tank Node with ESP-NOW fast broadcast, emergency overflow pump cutoff, and 10-sample batching."
-  },
-  "pump_node": {
-    "version": "1.2.8",
-    "filename": "pump_node_firmware.bin",
-    "description": "Pump Relay Node with active built-in LED signaling (2Hz on relay active), dynamic peer discovery, maintainWiFi loop, and web UI."
+    "description": "Ultrasonic Tank Node with direct level measurement and ESP32 HTTP API."
   }
 }
