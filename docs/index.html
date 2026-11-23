@@ -1477,6 +1477,12 @@
       </div>
 
       <div class="form-group">
+        <label>Device Command Token (64 hex characters)</label>
+        <input type="password" id="cfgCommandToken" autocomplete="new-password" placeholder="Set a private 64-character hex token">
+        <small class="note-text">Choose a private 64-character hex token. The page tries to provision the pressure node over its local API; if the browser blocks that request, provision it with POST /api/settings on the device LAN.</small>
+      </div>
+
+      <div class="form-group">
         <label>Status Topic (ESP32 Ack -> Cloud)</label>
         <input type="text" id="cfgTopicStatus" value="smarttank/dissertation/tap/status">
       </div>
@@ -1497,6 +1503,7 @@
     let topicTelemetry = localStorage.getItem('mqtt_topic_telemetry') || 'smarttank/dissertation/tap/live';
     let topicCommand = localStorage.getItem('mqtt_topic_command') || 'smarttank/dissertation/tap/cmd';
     let topicStatus = localStorage.getItem('mqtt_topic_status') || 'smarttank/dissertation/tap/status';
+    let mqttCommandToken = localStorage.getItem('mqtt_command_token') || '';
 
     let mqttClient = null;
     let chart = null;
@@ -1907,9 +1914,29 @@
         showToast('⚠️ Cloud disconnected! Reconnecting...');
         return false;
       }
-      const payload = JSON.stringify(cmdObj);
-      mqttClient.publish(topicCommand, payload);
-      console.log('🚀 Published Command:', payload, 'to topic:', topicCommand);
+      if (!/^[0-9a-fA-F]{64}$/.test(mqttCommandToken)) {
+        showToast('Set a 64-character device command token in MQTT settings first.');
+        return false;
+      }
+      const timestamp = Math.floor(Date.now() / 1000).toString();
+      const nonceBytes = crypto.getRandomValues(new Uint8Array(8));
+      const nonce = Array.from(nonceBytes, b => b.toString(16).padStart(2, '0')).join('');
+      const body = JSON.stringify(cmdObj);
+      const bodyBytes = new TextEncoder().encode(body);
+      let bodyBinary = '';
+      bodyBytes.forEach(b => bodyBinary += String.fromCharCode(b));
+      const bodyB64 = btoa(bodyBinary);
+      const canonical = timestamp + '\n' + nonce + '\n' + bodyB64;
+      const tokenBytes = Uint8Array.from(mqttCommandToken.match(/../g), b => parseInt(b, 16));
+      crypto.subtle.importKey('raw', tokenBytes, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'])
+        .then(key => crypto.subtle.sign('HMAC', key, new TextEncoder().encode(canonical)))
+        .then(signatureBuffer => {
+          if (!mqttClient || !mqttClient.connected) return;
+          const signature = Array.from(new Uint8Array(signatureBuffer), b => b.toString(16).padStart(2, '0')).join('');
+          mqttClient.publish(topicCommand, JSON.stringify({ timestamp, nonce, body: bodyB64, signature }));
+          console.log('🚀 Published authenticated command:', cmdObj.cmd, 'to topic:', topicCommand);
+        })
+        .catch(() => showToast('Could not sign the MQTT command in this browser.'));
       return true;
     }
 
@@ -1991,7 +2018,7 @@
         fetch('http://192.168.29.125/api/calibrate', {
           method: 'POST',
           headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-          body: 'p_empty=61.4&p_full=73.4'
+          body: 'action=manual&p_empty=61.4&p_full=73.4'
         });
       } catch (e) {}
       showToast('Applied Floor 1 Calibration (61.4 / 73.4 kPa)');
@@ -2002,7 +2029,14 @@
       const cap = parseFloat(document.getElementById('inputTankCap').value);
       const usFullDist = parseFloat(document.getElementById('inputUsFullDist').value);
       const url = document.getElementById('inputScriptUrl').value.trim();
-      publishCommand({ cmd: 'save_settings', depth: depth, cap: cap, us_full_dist: usFullDist, url: url });
+      const sent = publishCommand({ cmd: 'save_settings', depth: depth, cap: cap, us_full_dist: usFullDist, url: url });
+      if (!sent) {
+        const node1Body = 'tank_depth=' + encodeURIComponent(depth) + '&tank_cap=' + encodeURIComponent(cap) +
+          '&sensor_offset=' + encodeURIComponent(usFullDist) + '&script_url=' + encodeURIComponent(url);
+        const node2Body = 'tank_depth=' + encodeURIComponent(depth) + '&sensor_offset=' + encodeURIComponent(usFullDist);
+        try { fetch('http://192.168.29.125/api/settings', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: node1Body }); } catch(e) {}
+        try { fetch('http://192.168.29.130/api/settings', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: node2Body }); } catch(e) {}
+      }
       showToast('Saving tank & ultrasound parameters to ESP32 Flash...');
     }
 
@@ -2022,16 +2056,14 @@
       if (!confirm('⚡ Update firmware on ' + targetStr + ' immediately?\n\nThe ESP32 will contact GitHub Releases \'latest\', download the newest firmware binary, flash itself, and reboot.')) return;
       
       const cmdStr = nodeNum === 0 ? 'update_ota_both' : (nodeNum === 1 ? 'update_ota_node1' : 'update_ota_node2');
-      publishCommand({ cmd: cmdStr });
+      const sent = publishCommand({ cmd: cmdStr });
+      if (!sent) {
+        const urls = nodeNum === 0
+          ? ['http://192.168.29.125/api/ota_update', 'http://192.168.29.130/api/ota_update']
+          : [nodeNum === 2 ? 'http://192.168.29.130/api/ota_update' : 'http://192.168.29.125/api/ota_update'];
+        urls.forEach(url => { try { fetch(url, { method: 'POST', mode: 'no-cors' }); } catch(e) {} });
+      }
       showToast('⚡ Immediate firmware update command sent to ' + targetStr + '!');
-      
-      // Also trigger local endpoint directly if user is on local home Wi-Fi network
-      if (nodeNum === 2 || nodeNum === 0) {
-        try { fetch('http://192.168.29.130/api/ota_update', { method: 'POST', mode: 'no-cors' }); } catch(e) {}
-      }
-      if (nodeNum === 1 || nodeNum === 0) {
-        try { fetch('http://192.168.29.125/api/ota_update?node=' + nodeNum, { method: 'POST', mode: 'no-cors' }); } catch(e) {}
-      }
     }
 
     // Remotely Reboot Node 1 or Node 2
@@ -2040,13 +2072,17 @@
       if (!confirm(`Are you sure you want to remotely reboot ${nodeName}?`)) return;
       
       if (nodeNum === 1) {
-        publishCommand({ cmd: 'reboot' });
+        const sent = publishCommand({ cmd: 'reboot' });
+        if (!sent) {
+          try { fetch('http://192.168.29.125/api/reboot', { method: 'POST', mode: 'no-cors' }); } catch(e) {}
+        }
         showToast('Reboot command sent to Node 1...');
       } else {
-        publishCommand({ cmd: 'reboot_node2' });
+        const sent = publishCommand({ cmd: 'reboot_node2' });
         showToast('Reboot command forwarded to Node 2...');
-        // Also ping local endpoint directly if on local network
-        try { fetch('http://192.168.29.130/api/reboot', { method: 'POST', mode: 'no-cors' }); } catch(e) {}
+        if (!sent) {
+          try { fetch('http://192.168.29.130/api/reboot', { method: 'POST', mode: 'no-cors' }); } catch(e) {}
+        }
       }
     }
 
@@ -2073,6 +2109,7 @@
       document.getElementById('cfgTopicTelemetry').value = topicTelemetry;
       document.getElementById('cfgTopicCommand').value = topicCommand;
       document.getElementById('cfgTopicStatus').value = topicStatus;
+      document.getElementById('cfgCommandToken').value = mqttCommandToken;
       document.getElementById('configModal').style.display = 'flex';
     }
 
@@ -2088,19 +2125,40 @@
       document.getElementById('adcModal').style.display = 'none';
     }
 
-    function saveAndReconnectMqtt() {
+    async function saveAndReconnectMqtt() {
       brokerUrl = document.getElementById('cfgBrokerUrl').value.trim();
       topicTelemetry = document.getElementById('cfgTopicTelemetry').value.trim();
       topicCommand = document.getElementById('cfgTopicCommand').value.trim();
       topicStatus = document.getElementById('cfgTopicStatus').value.trim();
+      mqttCommandToken = document.getElementById('cfgCommandToken').value.trim();
+      if (mqttCommandToken && !/^[0-9a-fA-F]{64}$/.test(mqttCommandToken)) {
+        alert('The device command token must contain exactly 64 hexadecimal characters.');
+        return;
+      }
 
       localStorage.setItem('mqtt_broker_url', brokerUrl);
       localStorage.setItem('mqtt_topic_telemetry', topicTelemetry);
       localStorage.setItem('mqtt_topic_command', topicCommand);
       localStorage.setItem('mqtt_topic_status', topicStatus);
+      localStorage.setItem('mqtt_command_token', mqttCommandToken);
+
+      let tokenProvisioned = false;
+      if (mqttCommandToken) {
+        const body = 'mqtt_cmd_token=' + encodeURIComponent(mqttCommandToken);
+        try {
+          const response = await fetch('http://192.168.29.125/api/settings', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body
+          });
+          const result = await response.json();
+          tokenProvisioned = response.ok && result.status === 'success';
+        } catch (e) {}
+      }
 
       closeConfigModal();
-      showToast('Settings saved. Reconnecting...');
+      showToast(mqttCommandToken && !tokenProvisioned
+        ? 'Token saved in this browser; provision the pressure node through its local /api/settings endpoint before sending commands.'
+        : 'Settings saved. Reconnecting...');
       connectMqtt();
     }
 
